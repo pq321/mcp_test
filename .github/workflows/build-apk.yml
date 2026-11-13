@@ -14,12 +14,12 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
       - name: Install Android SDK platform
-        run: sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+        run: |
+          sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
       - name: Validate sample content
         run: python3 scripts/validate_pack.py app/src/main/assets/starter-sixiu-k.json
       - name: Assemble debug APK
