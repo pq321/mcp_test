@@ -2,17 +2,19 @@
 
 A deliberately small **100% offline** Android app to memorize political-study material on a phone. No logins, WebView, ad SDKs, trackers, network permission or cloud backend. Modeled on the *interaction pattern* of a clean word-review app, without copying product branding or copyrighted graphical assets.
 
-## What works in v0.1 source
+## What works in v0.2 source
 
 - Full-screen swipe: **left = previous; right = next**, intentionally following the user's specified direction.
 - Tap to reveal/hide answer; the answer visibility **persists across all swipes**.
 - Three ratings: **不会 / 模糊 / 会了**. The phone immediately stores them in a local SQLite database.
 - Familiarity 0–4: score ≥3 + latest `会了` on a **different calendar date** = mastered; repeated taps on one day cannot farm familiarity.
-- Three-level navigation: **科目 → 章节 → 考点**, with coverage, mastery and familiarity.
+- Expandable three-level Su Yi-derived navigation: **科目 → 章节 → 考点 → 条目正文**. Each subject/chapter/topic has a play button, and each heading expands independently. The source pack keeps original item IDs so progress is preserved.
+- **Offline system Chinese TTS**: play the selected heading and keep reading subsequent items, or play the home review queue. A foreground media notification supports background/screen-off reading and pause/resume/stop (resume repeats the current item).
+- The Android system must already have a **downloaded offline Chinese voice**. The app never fetches voice data. Emulator audio cannot substitute for real-phone audio verification.
 - Daily queue of due cards followed by new cards (default cap 25; configurable). Book/topic browsing is always available.
-- Offline import from `.json`, transactional, duplicate-safe, stable card IDs. A content update retains review history but flags material changes for review.
+- Offline import from `.json`, transactional, duplicate-safe, stable card IDs. A content update retains review history; moving a card between headings does **not** flag it as forgotten, while changing the actual question or answer does require review.
 - User-initiated export of full **JSON** backup + optional **CSV** report through Android's Documents picker. Codex reads the JSON directly.
-- Built-in 93-card **思修重点K** starter pack. Cards are concise paraphrased exam facts, not a copy of textbooks or proprietary courses.
+- Built-in 93-card **思修重点K** starter pack reorganized into 36 nonempty Su Yi-style topics. Cards are concise paraphrased exam facts, not a copy of textbooks or proprietary courses. Missing topics are intentionally not inferred from a title.
 
 ## Build APK
 
@@ -47,4 +49,4 @@ Source code contains only generic source facts and a sample pack. Real user prog
 
 ## Caution
 
-Source created in a limited environment without a preinstalled Android SDK; GitHub Actions compilation and real-device touch tests must complete before this is called a verified working APK. See Codex handoff for acceptance criteria.
+GitHub Actions builds the APK, and a separate emulator screenshot workflow is available. **Compilation and emulator screenshots do not establish real-device fluidity or background audio reliability**; confirm those on the target Android phone. Debug builds may use different signing certificates on separate runners. Back up progress before uninstalling an older debug APK, and use a stable private signing key for future long-term updates.

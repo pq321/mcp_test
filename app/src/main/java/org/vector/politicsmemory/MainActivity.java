@@ -67,13 +67,11 @@ public final class MainActivity extends Activity {
         showAnswer="true".equals(store.setting("show_answer","false"));
         buildRoot();
         switchTab(1);
-        // Small built-in fact pack; only installed on an empty database.
-        if(store.countCards()==0) {
-            new Thread(()->{
-                try{store.installStarterOnce();runOnUiThread(()->switchTab(1));}
-                catch(Exception e){runOnUiThread(()->error("内置素材初始化失败："+e.getMessage()));}
-            }).start();
-        }
+        // Install or upgrade the bundled Su Yi heading map; never delete local ratings.
+        new Thread(()->{
+            try{store.installStarterOnce();runOnUiThread(()->switchTab(1));}
+            catch(Exception e){runOnUiThread(()->error("内置素材初始化失败："+e.getMessage()));}
+        }).start();
     }
     @Override protected void onDestroy(){store.close();super.onDestroy();}
     private int parseGoal(String v){try{int k=Integer.parseInt(v);return Math.max(5,Math.min(100,k));}catch(Exception e){return 25;}}
@@ -127,8 +125,15 @@ public final class MainActivity extends Activity {
     private LinearLayout titleBar(String title,boolean menu){
         LinearLayout bar=row();padding(bar,18,15,16,13);
         TextView t=text(title,22,DARK,false);bar.addView(t,new LinearLayout.LayoutParams(0,-2,1));
-        if(menu){TextView button=text("⋮",28,DARK,false);padding(button,13,0,5,0);
-            button.setOnClickListener(v->showFileMenu());bar.addView(button);}
+        if(menu){
+            if(SpeechService.active){
+                TextView stop=text("■",19,TEAL,true);padding(stop,10,4,10,4);
+                stop.setContentDescription("停止朗读");
+                stop.setOnClickListener(v->{stopSpeech();switchTab(currentTab);});bar.addView(stop);
+            }
+            TextView button=text("⋮",28,DARK,false);padding(button,13,0,5,0);
+            button.setOnClickListener(v->showFileMenu());bar.addView(button);
+        }
         return bar;
     }
     private void showFileMenu(){
@@ -137,6 +142,42 @@ public final class MainActivity extends Activity {
             if(which==0)chooseImport();else if(which==1)chooseExport(false);
             else if(which==2)chooseExport(true);else showFormatHelp();
         }).show();
+    }
+    /** Play all cards from this heading, then continue to the following headings. */
+    private TextView playButton(Runnable start){
+        TextView button=text("▶",17,TEAL,true);
+        button.setGravity(Gravity.CENTER);button.setContentDescription("从此标题开始连续朗读");
+        button.setBackground(bg(0xffeaf7f5,22));
+        LinearLayout.LayoutParams p=lp(39,35);p.leftMargin=dp(7);button.setLayoutParams(p);
+        button.setOnClickListener(v->start.run());return button;
+    }
+    private void startContinuousSpeech(String firstId){
+        Intent i=new Intent(this,SpeechService.class);i.setAction(SpeechService.PLAY);
+        i.putExtra(SpeechService.EXTRA_FIRST,firstId);
+        launchSpeech(i);
+    }
+    private void startReviewSpeech(int position){
+        if(SpeechService.active){
+            Intent i=new Intent(this,SpeechService.class);i.setAction(SpeechService.TOGGLE);
+            startService(i);return;
+        }
+        if(session.isEmpty())return;
+        Intent i=new Intent(this,SpeechService.class);i.setAction(SpeechService.PLAY);
+        ArrayList<String> ids=new ArrayList<>();
+        for(int j=position;j<session.size();j++)ids.add(session.get(j).id);
+        i.putStringArrayListExtra(SpeechService.EXTRA_IDS,ids);
+        launchSpeech(i);
+    }
+    private void launchSpeech(Intent i){
+        try{
+            if(android.os.Build.VERSION.SDK_INT>=26)startForegroundService(i);
+            else startService(i);
+            Toast.makeText(this,"已启动离线连续朗读 · 通知栏可暂停或停止",Toast.LENGTH_SHORT).show();
+        }catch(Exception e){error("无法启动朗读，请检查系统语音引擎和设置："+e.getMessage());}
+    }
+    private void stopSpeech(){
+        Intent i=new Intent(this,SpeechService.class);i.setAction(SpeechService.STOP);
+        startService(i);
     }
     private void showCatalogue(){
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);
@@ -170,32 +211,59 @@ public final class MainActivity extends Activity {
         for(Map.Entry<String,LinkedHashMap<String,LinkedHashMap<String,ArrayList<StudyCard>>>> subject:groups.entrySet()){
             ArrayList<StudyCard> sCards=select(all,subject.getKey(),null,null);
             LinearLayout card=column();card.setBackground(bg(WHITE,9));padding(card,14,12,14,10);
-            TextView st=text(subject.getKey()+"  ▾",19,DARK,true);card.addView(st);
-            card.addView(progressText(summary(sCards)));
-            addProgressBar(card,summary(sCards));
-            LinearLayout inner=column();spacer(card,8);card.addView(inner);
             String key="open_sub_"+subject.getKey();
+            LinearLayout inner=column();
             boolean expanded="1".equals(store.setting(key,"1"));inner.setVisibility(expanded?View.VISIBLE:View.GONE);
-            st.setOnClickListener(v->{boolean open=inner.getVisibility()!=View.VISIBLE;inner.setVisibility(open?View.VISIBLE:View.GONE);store.saveSetting(key,open?"1":"0");});
+            LinearLayout sHeader=row();
+            TextView st=text((expanded?"▾  ":"▸  ")+subject.getKey(),19,DARK,true);
+            sHeader.addView(st,new LinearLayout.LayoutParams(0,-2,1));
+            sHeader.addView(playButton(()->startContinuousSpeech(sCards.get(0).id)));
+            card.addView(sHeader);card.addView(progressText(summary(sCards)));
+            addProgressBar(card,summary(sCards));spacer(card,8);card.addView(inner);
+            st.setOnClickListener(v->{boolean open=inner.getVisibility()!=View.VISIBLE;
+                inner.setVisibility(open?View.VISIBLE:View.GONE);st.setText((open?"▾  ":"▸  ")+subject.getKey());
+                store.saveSetting(key,open?"1":"0");});
             for(Map.Entry<String,LinkedHashMap<String,ArrayList<StudyCard>>> chapter:subject.getValue().entrySet()){
                 ArrayList<StudyCard> cCards=select(all,subject.getKey(),chapter.getKey(),null);
                 LinearLayout cBlock=column();
-                TextView ct=text("    ▸  "+chapter.getKey(),15,DARK,true);padding(ct,0,12,0,3);
-                cBlock.addView(ct);cBlock.addView(indentedProgress(summary(cCards),1));
-                LinearLayout topics=column();cBlock.addView(topics);
                 String cKey="open_ch_"+subject.getKey()+"_"+chapter.getKey();
-                boolean cExpand="1".equals(store.setting(cKey,"1"));topics.setVisibility(cExpand?View.VISIBLE:View.GONE);
-                ct.setOnClickListener(v->{boolean open=topics.getVisibility()!=View.VISIBLE;topics.setVisibility(open?View.VISIBLE:View.GONE);store.saveSetting(cKey,open?"1":"0");});
+                boolean cExpand="1".equals(store.setting(cKey,"0"));
+                LinearLayout cHeader=row();padding(cHeader,0,12,0,3);
+                TextView ct=text((cExpand?"▾  ":"▸  ")+chapter.getKey(),15,DARK,true);
+                cHeader.addView(ct,new LinearLayout.LayoutParams(0,-2,1));
+                cHeader.addView(playButton(()->startContinuousSpeech(cCards.get(0).id)));
+                cBlock.addView(cHeader);cBlock.addView(indentedProgress(summary(cCards),1));
+                LinearLayout topics=column();cBlock.addView(topics);
+                topics.setVisibility(cExpand?View.VISIBLE:View.GONE);
+                ct.setOnClickListener(v->{boolean open=topics.getVisibility()!=View.VISIBLE;
+                    topics.setVisibility(open?View.VISIBLE:View.GONE);ct.setText((open?"▾  ":"▸  ")+chapter.getKey());
+                    store.saveSetting(cKey,open?"1":"0");});
                 for(Map.Entry<String,ArrayList<StudyCard>> topic:chapter.getValue().entrySet()){
                     ArrayList<StudyCard> tCards=topic.getValue();Summary ts=summary(tCards);
-                    LinearLayout tRow=row();padding(tRow,26,10,0,10);
+                    LinearLayout tRow=row();padding(tRow,20,8,0,8);
                     LinearLayout labels=column();
-                    labels.addView(text("•  "+topic.getKey(),14,DARK,false));
+                    String tKey="open_topic_"+subject.getKey()+"_"+chapter.getKey()+"_"+topic.getKey();
+                    boolean tExpanded="1".equals(store.setting(tKey,"0"));
+                    TextView tTitle=text((tExpanded?"▾  ":"▸  ")+topic.getKey(),14,DARK,false);
+                    labels.addView(tTitle);
                     labels.addView(text("已背 "+ts.covered+"/"+ts.total+"   掌握 "+ts.mastered+"/"+ts.total+"   熟悉 "+String.format(Locale.CHINA,"%.1f",ts.average())+"/4",11,MUTED,false));
                     tRow.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
-                    tRow.addView(text("›",22,TEAL,false));
-                    tRow.setOnClickListener(v->startScoped(tCards,subject.getKey()+" / "+chapter.getKey()+" / "+topic.getKey()));
+                    tRow.addView(playButton(()->startContinuousSpeech(tCards.get(0).id)));
                     topics.addView(tRow);
+                    LinearLayout leaves=column();leaves.setVisibility(tExpanded?View.VISIBLE:View.GONE);
+                    for(StudyCard c:tCards){
+                        LinearLayout leaf=column();padding(leaf,36,8,9,9);
+                        leaf.addView(text(c.question,13,DARK,true));
+                        TextView answerPreview=text(c.answer,12,MUTED,false);
+                        answerPreview.setMaxLines(3);answerPreview.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                        leaf.addView(answerPreview);
+                        leaf.setOnClickListener(v->startScoped(tCards,topic.getKey(),c.id));
+                        leaves.addView(leaf);
+                    }
+                    topics.addView(leaves);
+                    labels.setOnClickListener(v->{boolean open=leaves.getVisibility()!=View.VISIBLE;
+                        leaves.setVisibility(open?View.VISIBLE:View.GONE);
+                        tTitle.setText((open?"▾  ":"▸  ")+topic.getKey());store.saveSetting(tKey,open?"1":"0");});
                 }
                 inner.addView(cBlock);
             }
@@ -331,6 +399,12 @@ public final class MainActivity extends Activity {
         TextView mode=text(showAnswer?"显示答案":"隐藏答案",12,0xff31545a,false);
         padding(mode,8,7,8,7);mode.setBackground(bg(0x4088d6d7,8));
         mode.setOnClickListener(v->toggleAnswer());bar.addView(mode);
+        TextView speak=text(SpeechService.active?(SpeechService.paused?"▶":"Ⅱ"):"▶",22,0xff31545a,true);
+        speak.setGravity(Gravity.CENTER);padding(speak,10,3,2,3);
+        speak.setContentDescription("自动连续朗读；再次点击暂停或继续");
+        speak.setOnClickListener(v->{startReviewSpeech(pager==null?index:pager.index());
+            speak.postDelayed(()->speak.setText(SpeechService.active?(SpeechService.paused?"▶":"Ⅱ"):"▶"),320);
+        });bar.addView(speak);
         header.addView(bar);spacer(header,11);
         TextView question=text(card.question,"essay".equals(card.type)?22:25,0xff15282a,false);
         question.setGravity(Gravity.CENTER);question.setMaxLines(4);header.addView(question,lp(-1,-2));spacer(header,13);
@@ -426,7 +500,11 @@ public final class MainActivity extends Activity {
         spacer(body,12);
         body.addView(text("左滑 = 上一条；右滑 = 下一条；答案显隐状态随滑动保留。",13,MUTED,false));
         spacer(body,13);
-        body.addView(text("版本 0.1 · 所有数据均保存在设备上",12,MUTED,false));
+        body.addView(text("连续朗读使用系统离线中文TTS语音；息屏时由媒体通知维持，可暂停、继续、停止。",13,MUTED,false));
+        spacer(body,8);
+        body.addView(text("如果没有声音，请在手机系统设置中安装中文离线语音数据。暂停后从当前知识点重新朗读。",12,MUTED,false));
+        spacer(body,10);
+        body.addView(text("版本 0.2 · 所有资料及掌握记录均保存在设备上",12,MUTED,false));
     }
     private void addSettingButton(LinearLayout parent,String title,String sub,Runnable action){
         LinearLayout view=column();view.setBackground(bg(WHITE,9));padding(view,17,14,17,13);

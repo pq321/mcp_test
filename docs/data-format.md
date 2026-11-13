@@ -65,6 +65,12 @@ Export a single JSON file via the Android system document picker. The backup roo
 
 Time fields are Unix milliseconds. `last_yes_day` is the phone's **local calendar date** (`yyyyMMdd`). The whole backup is intentionally plain JSON so **Codex can read it with no special database driver**. You can also export a UTF-8-with-BOM CSV progress report, which is compatible with Excel/VS Code.
 
+When importing a new pack revision, heading/path/source/order changes are metadata-only and **do not** reset mastery. Changes to question, answer, or card type flag the existing rating as `needs_review`; stable IDs retain history.
+
+For the Su Yi mind-map hierarchy, keep the three `path` strings in the order `["思修", "06 第六章 法治素养", "考点6 建设法治中国"]`. One topic can contain several independently rated facts; every level expands in the app. To retain the original full Su Yi topics, see the source reading material; the starter pack deliberately contains only selected high-value facts, not all text.
+
+**Speech:** Play on any subject/chapter/topic begins at its first item, then automatically continues through later items in the installed study order. Home-mode speech only plays the current review session from its current position. Uses Android local Chinese TextToSpeech (TTS), not prerecorded audio and never a network voice. Media notification continues screen-off and can pause/resume/stop; resume restarts the current item. Playback never changes review ratings.
+
 When restoring a backup, newer local rating timestamps win. The event log is deduplicated by event UUID. Restore is transactional; it never deletes cards. A content-change flag is preserved while restoring older practice records.
 
 ## Familiarity algorithm

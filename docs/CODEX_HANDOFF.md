@@ -34,3 +34,13 @@ This is a handoff note for an agent in a developer environment; do not add featu
 - Starter contains paraphrased compact K facts, not the user's F2 full mother templates. Import additional courses as separate packs and keep stable IDs.
 - OCR/course-derived political materials may have transcription errors; verify fixed wordings against user-owned authoritative book. Do not infer exam frequency or automatically delete topics from absence in a course.
 - Prioritize real-APK compilation and swipe behavior over new features. User requested a small, fast, minimal app.
+
+
+## v0.2 additions and validation priorities
+
+- MainActivity now implements expandable 科目/章节/考点 headings with playback controls; tap a content leaf to enter original study pager.
+- SpeechService uses offline Android TextToSpeech and a media-playback foreground service for lock-screen continuation. Test on the actual device with a previously installed Chinese offline voice. No INTERNET permission.
+- The starter pack is now version 2 and maps 93 original item IDs into 36 nonempty Su Yi-style topic headings. `StudyStore.installStarterOnce()` checks the pack revision and performs metadata-only upgrade without invalidating review history.
+- Manual test: open subject, open chapter, open topic, start chapter playback, screen off for several minutes, listen until next topic; pause/continue from notification. Test home session playback, phone restart, import duplicate and edited JSON, and backup restoration.
+- A stable private signing key is required for upgrade-safe long-term APK releases. CI debug certificates differ between builds; never uninstall an installed copy without first exporting a JSON backup.
+- If the Android emulator screenshot job fails due to AVD dependencies, CI compilation and screenshot verification should be reported separately.

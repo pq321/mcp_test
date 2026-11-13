@@ -60,10 +60,16 @@ final class StudyStore extends SQLiteOpenHelper {
             return out.toString(StandardCharsets.UTF_8.name());
         }
     }
+    /** Upgrade built-in heading metadata without deleting ratings; preserves existing material packs. */
     void installStarterOnce() throws IOException, JSONException {
-        if (countCards() > 0) return;
         try (InputStream in = context.getAssets().open("starter-sixiu-k.json")) {
-            importPayload(new JSONObject(readText(in,20*1024*1024)));
+            JSONObject pack=new JSONObject(readText(in,20*1024*1024));
+            String id=pack.getString("pack_id");int incoming=pack.getInt("pack_revision");
+            int existing=0;
+            try(Cursor cur=getReadableDatabase().rawQuery("SELECT rev FROM packs WHERE id=?",new String[]{id})){
+                if(cur.moveToFirst())existing=cur.getInt(0);
+            }
+            if(incoming>existing)importPayload(pack);
         }
     }
     int countCards() {
@@ -156,12 +162,12 @@ final class StudyStore extends SQLiteOpenHelper {
                 if(!pack.id.equals(c.getString(0))) throw new JSONException("卡片ID与其他素材包冲突："+card.id);
                 int existingRev=c.getInt(1);
                 if(card.revision<existingRev){out.skipped++;continue;}
-                boolean contentChanged=!card.subject.equals(c.getString(2))||!card.chapter.equals(c.getString(3))||!card.topic.equals(c.getString(4))
-                        ||!card.type.equals(c.getString(5))||!card.question.equals(c.getString(6))||!card.answer.equals(c.getString(7))
-                        ||!card.source.equals(c.getString(8))||card.order!=c.getInt(9);
-                if(!contentChanged && card.revision==existingRev){out.unchanged++;continue;}
+                boolean semanticChanged=!card.type.equals(c.getString(5))||!card.question.equals(c.getString(6))||!card.answer.equals(c.getString(7));
+                boolean metadataChanged=!card.subject.equals(c.getString(2))||!card.chapter.equals(c.getString(3))
+                        ||!card.topic.equals(c.getString(4))||!card.source.equals(c.getString(8))||card.order!=c.getInt(9);
+                if(!semanticChanged && !metadataChanged && card.revision==existingRev){out.unchanged++;continue;}
                 db.update("cards",cardValues(card),"id=?",new String[]{card.id});
-                if(contentChanged){
+                if(semanticChanged){
                     ContentValues rv=new ContentValues();rv.put("needs_review",1);rv.put("due_at",System.currentTimeMillis());
                     db.update("reviews",rv,"card_id=?",new String[]{card.id});
                 }
