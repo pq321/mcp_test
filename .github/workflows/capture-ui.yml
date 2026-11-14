@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'app/**'
+      - 'data/suyi-full.json'
       - '.github/workflows/capture-ui.yml'
 jobs:
   capture:
@@ -20,6 +21,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Prepare full Su Yi content pack
+        run: cp data/suyi-full.json app/src/main/assets/suyi-full.json
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -40,7 +43,7 @@ jobs:
             adb shell wm size 420x900
             adb shell wm density 180
             adb shell am start -n org.vector.politicsmemory/.MainActivity
-            sleep 6
+            sleep 12
             mkdir -p screenshots
             adb shell screencap -p /sdcard/catalogue.png
             adb pull /sdcard/catalogue.png screenshots/catalogue.png
