@@ -388,32 +388,16 @@ public final class MainActivity extends Activity {
     }
     private void showReview(){
         ArrayList<StudyCard> all=store.allCards();
-        ArrayList<StudyCard> due=new ArrayList<>(), newCards=new ArrayList<>();
-        long now=System.currentTimeMillis();
-        for(StudyCard c:all){
-            if(c.reviewCount==0)newCards.add(c);
-            else if(c.dueAt<=now ||c.needsReview)due.add(c);
-        }
-        due.sort(Comparator.comparingLong(x->x.dueAt));
-        session=new ArrayList<>();
-        for(StudyCard c:due){if(session.size()>=dailyGoal)break;session.add(c);}
-        for(StudyCard c:newCards){if(session.size()>=dailyGoal)break;session.add(c);}
-        if(session.isEmpty()){
-            LinearLayout v=column();v.setGravity(Gravity.CENTER);padding(v,25,10,25,10);
-            v.addView(text("今日复习已完成",24,TEAL,true));spacer(v,14);
-            TextView t=text("当前没有到期或待学习的新知识组。可以从资料目录选择章节继续背。",15,MUTED,false);
-            t.setGravity(Gravity.CENTER);v.addView(t);content.addView(v);return;
-        }
-        currentScope="今日复习";
+        if(all.isEmpty()){LinearLayout v=column();v.setGravity(Gravity.CENTER);v.addView(text("暂无知识组",20,MUTED,false));content.addView(v);return;}
+        session=new ArrayList<>(all);currentScope="全部知识组";
         int start=0;String saved=store.setting("last_card_id","");
         for(int i=0;i<session.size();i++)if(session.get(i).id.equals(saved)){start=i;break;}
         renderPager(start);
     }
     private void startScoped(List<StudyCard> cards,String scope){startScoped(cards,scope,cards.isEmpty()?"":cards.get(0).id);}
     private void startScoped(List<StudyCard> cards,String scope,String id){
-        if(cards.isEmpty()){Toast.makeText(this,"这一组没有知识点",Toast.LENGTH_SHORT).show();return;}
-        session=new ArrayList<>(cards);currentScope=scope;
-        currentTab=0;content.removeAllViews();showNav();
+        ArrayList<StudyCard> all=store.allCards();if(all.isEmpty())return;
+        session=new ArrayList<>(all);currentScope=scope;currentTab=0;content.removeAllViews();showNav();
         int start=0;for(int i=0;i<session.size();i++)if(session.get(i).id.equals(id)){start=i;break;}
         renderPager(start);
     }
