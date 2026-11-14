@@ -136,12 +136,9 @@ public final class MainActivity extends Activity {
         return bar;
     }
     private void showFileMenu(){
-        String[] items={"导入素材、音频包或备份（JSON/ZIP）","导出完整备份（JSON）","导出学习记录（CSV）",
-                "朗读倍速："+String.format(Locale.CHINA,"%.2f×",speechSpeed()),"每日目标："+dailyGoal+"组","查看数据格式说明"};
-        new AlertDialog.Builder(this).setTitle("本地工具").setItems(items,(d,which)->{
-            if(which==0)chooseImport();else if(which==1)chooseExport(false);
-            else if(which==2)chooseExport(true);else if(which==3)changeSpeechSpeed();
-            else if(which==4)changeGoal();else showFormatHelp();
+        String[] items={"导出备份","导入备份"};
+        new AlertDialog.Builder(this).setTitle("同步数据").setItems(items,(d,which)->{
+            if(which==0)chooseExport(false);else chooseImport();
         }).show();
     }
     private float speechSpeed(){
@@ -274,11 +271,11 @@ public final class MainActivity extends Activity {
                     LinearLayout leaves=column();leaves.setVisibility(tExpanded?View.VISIBLE:View.GONE);
                     for(StudyCard c:tCards){
                         LinearLayout leaf=column();padding(leaf,36,5,9,6);
-                        TextView leafTitle=text(c.displayTitle(),13,DARK,true);leaf.addView(leafTitle);
+                        LinearLayout leafRow=row();TextView leafTitle=text(c.displayTitle(),13,DARK,true);leafRow.addView(leafTitle,new LinearLayout.LayoutParams(0,-2,1));
+                        TextView play=playButton(()->startContinuousSpeech(Collections.singletonList(c)));leafRow.addView(play);leaf.addView(leafRow);
                         TextView recall=text(c.question,11.5f,MUTED,false);recall.setMaxLines(2);
                         recall.setEllipsize(android.text.TextUtils.TruncateAt.END);leaf.addView(recall);
                         if(c.wrongQuestion)leaf.addView(text("做题错题",9,ORANGE,true));
-                        leaf.setOnClickListener(v->startScoped(tCards,topic.getKey(),c.id));
                         leaves.addView(leaf);
                     }
                     topics.addView(leaves);
