@@ -63,8 +63,15 @@ final class AudioZipImporter {
             org.json.JSONArray cards=pack.getJSONArray("cards");
             for(int j=0;j<cards.length();j++){
                 JSONObject c=cards.getJSONObject(j);
-                String id=c.getString("id");
-                hashes.put(id,AudioCatalog.digest((c.getString("question")+"\n"+c.getString("answer")).getBytes(StandardCharsets.UTF_8)));
+                org.json.JSONArray path=c.getJSONArray("path");
+                StudyCard card=new StudyCard();
+                card.id=c.getString("id");
+                card.subject=path.getString(0);card.chapter=path.getString(1);card.topic=path.getString(2);
+                card.title=c.optString("title",card.topic).trim();
+                card.question=c.getString("question");card.answer=c.getString("answer");
+                card.notes=c.optString("notes","");
+                // Must match the generator and AudioCatalog: path + title + question + answer + notes.
+                hashes.put(card.id,AudioCatalog.contentHash(card));
             }
             Iterator<String> keys=items.keys();
             while(keys.hasNext()){

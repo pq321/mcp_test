@@ -167,9 +167,14 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams p=lp(39,35);p.leftMargin=dp(7);button.setLayoutParams(p);
         button.setOnClickListener(v->start.run());return button;
     }
-    private void startContinuousSpeech(String firstId){
+    /** Play exactly the selected subject/chapter/topic, not every later card in the book. */
+    private void startContinuousSpeech(List<StudyCard> cards){
+        if(cards==null||cards.isEmpty())return;
         Intent i=new Intent(this,SpeechService.class);i.setAction(SpeechService.PLAY);
-        i.putExtra(SpeechService.EXTRA_FIRST,firstId);i.putExtra(SpeechService.EXTRA_SPEED,speechSpeed());
+        ArrayList<String> ids=new ArrayList<>();
+        for(StudyCard card:cards)ids.add(card.id);
+        i.putStringArrayListExtra(SpeechService.EXTRA_IDS,ids);
+        i.putExtra(SpeechService.EXTRA_SPEED,speechSpeed());
         launchSpeech(i);
     }
     private void startReviewSpeech(int position){
@@ -233,7 +238,7 @@ public final class MainActivity extends Activity {
             LinearLayout sHeader=row();
             TextView st=text((expanded?"▾  ":"▸  ")+subject.getKey(),19,DARK,true);
             sHeader.addView(st,new LinearLayout.LayoutParams(0,-2,1));
-            sHeader.addView(playButton(()->startContinuousSpeech(sCards.get(0).id)));
+            sHeader.addView(playButton(()->startContinuousSpeech(sCards)));
             card.addView(sHeader);card.addView(progressText(summary(sCards)));
             addProgressBar(card,summary(sCards));spacer(card,8);card.addView(inner);
             st.setOnClickListener(v->{boolean open=inner.getVisibility()!=View.VISIBLE;
@@ -247,7 +252,7 @@ public final class MainActivity extends Activity {
                 LinearLayout cHeader=row();padding(cHeader,0,12,0,3);
                 TextView ct=text((cExpand?"▾  ":"▸  ")+chapter.getKey(),15,DARK,true);
                 cHeader.addView(ct,new LinearLayout.LayoutParams(0,-2,1));
-                cHeader.addView(playButton(()->startContinuousSpeech(cCards.get(0).id)));
+                cHeader.addView(playButton(()->startContinuousSpeech(cCards)));
                 cBlock.addView(cHeader);cBlock.addView(indentedProgress(summary(cCards),1));
                 LinearLayout topics=column();cBlock.addView(topics);
                 topics.setVisibility(cExpand?View.VISIBLE:View.GONE);
@@ -264,7 +269,7 @@ public final class MainActivity extends Activity {
                     labels.addView(tTitle);
                     labels.addView(text("已背 "+ts.covered+"/"+ts.total+"   掌握 "+ts.mastered+"/"+ts.total+"   熟悉 "+String.format(Locale.CHINA,"%.1f",ts.average())+"/4",11,MUTED,false));
                     tRow.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
-                    tRow.addView(playButton(()->startContinuousSpeech(tCards.get(0).id)));
+                    tRow.addView(playButton(()->startContinuousSpeech(tCards)));
                     topics.addView(tRow);
                     LinearLayout leaves=column();leaves.setVisibility(tExpanded?View.VISIBLE:View.GONE);
                     for(StudyCard c:tCards){
