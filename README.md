@@ -19,15 +19,19 @@
 
 ## 网页预览
 
-GitHub Actions 成功部署后，桌面／手机浏览器地址：
+**完整离线网页成品已提交到仓库的 `web-preview/` 目录**，不是只有源码：
 
-- [PoliticsMemory 网页预览](https://pq321.github.io/mcp_test/)
+- [打开完整网页成品目录](web-preview/)
+- [网页入口 HTML](web-preview/index.html)
+- [561组音频索引](web-preview/audio-index.json)
+- `web-preview/audio/`：561条逐组 MP3 录音
+- `web-preview/README.md`：离线运行说明
 
-**首次启用 GitHub Pages 需要仓库管理员做一次设置：** Repository → Settings → Pages → Build and deployment → Source 选择 **GitHub Actions**。当前仓库尚未创建 Pages site，工作流不能替代这一步；启用后再运行 `Build and deploy PoliticsMemory v0.8` 即可自动部署。
+下载或克隆整个 `web-preview/` 目录后，保持 `index.html`、`audio-index.json` 和 `audio/` 的相对位置不变，使用浏览器打开 `index.html` 即可离线使用。Codex 可以直接检查该目录中的完整网页成品、数据和录音索引。
 
-预览包含完整数据、音频与倍速控制。学习记录保存在当前浏览器 `localStorage`，不会上传；更换浏览器或清理网站数据前请先导出 JSON 备份。
+GitHub Pages 在线地址（启用并部署成功后）：[PoliticsMemory 网页预览](https://pq321.github.io/mcp_test/)。若 Pages 尚未启用，需要仓库管理员在 Repository → Settings → Pages → Build and deployment 中选择 **GitHub Actions**，再运行 `Build and deploy PoliticsMemory v0.8`。
 
-源码开发入口位于 `preview/`。单文件离线预览由 `scripts/build_preview.py` 生成；必须把 `audio/` 目录与 `index.html` 放在一起。
+学习记录保存在当前浏览器 `localStorage`，不会上传；更换浏览器或清理网站数据前请先导出 JSON 备份。源码开发入口位于 `preview/`，完整网页由 `scripts/build_preview.py` 生成。
 
 ## Android APK
 
