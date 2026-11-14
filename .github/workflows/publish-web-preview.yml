@@ -1,0 +1,115 @@
+name: Publish complete PoliticsMemory web preview to repository
+
+on:
+  workflow_run:
+    workflows: ["Build and deploy PoliticsMemory v0.8"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Successful build workflow run ID"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: publish-politics-memory-web-preview
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      ${{ (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Resolve source build run
+        id: source
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run_id=${{ inputs.run_id }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_id=${{ github.event.workflow_run.id }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download complete web preview artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: politics-memory-web-preview
+          path: downloaded-site
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.source.outputs.run_id }}
+
+      - name: Verify full web preview before publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s downloaded-site/index.html
+          test -s downloaded-site/audio-index.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path("downloaded-site")
+          index=json.loads((root/"audio-index.json").read_text(encoding="utf-8"))
+          items=index.get("items",{})
+          audio={p.name for p in (root/"audio").glob("*.mp3")}
+          if len(items)!=561:
+              raise SystemExit(f"Expected 561 indexed audio clips, found {len(items)}")
+          if len(audio)!=561:
+              raise SystemExit(f"Expected 561 MP3 files, found {len(audio)}")
+          missing=[]
+          for card_id,item in items.items():
+              name=f"{card_id}.mp3"
+              if item.get("file") != f"audio/{name}" or name not in audio:
+                  missing.append(card_id)
+          if missing:
+              raise SystemExit("Missing or invalid audio entries: "+", ".join(missing[:20]))
+          if not (root/"README.txt").is_file():
+              raise SystemExit("Missing offline preview instructions")
+          print(f"PASS: full preview has {len(items)} indexed groups and {len(audio)} MP3 files")
+          PY
+
+      - name: Publish full offline preview into web-preview/
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf web-preview
+          mkdir -p web-preview
+          cp -a downloaded-site/. web-preview/
+          cat > web-preview/README.md <<'EOF'
+          # PoliticsMemory v0.8 — Complete offline web preview
+
+          This directory is the complete built preview, not just source code.
+
+          - Open `index.html` in a modern browser.
+          - Keep the `audio/` directory beside `index.html`.
+          - `audio-index.json` maps all 561 groups to their verified MP3 files.
+          - The preview is self-contained and works offline after download/extraction.
+          - Study progress is stored locally in the current browser profile; export a JSON backup before clearing browser data.
+
+          Source files remain in `preview/`; the source knowledge pack is in `data/suyi-full.json`.
+          EOF
+
+      - name: Commit complete web preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A web-preview
+          if git diff --cached --quiet; then
+            echo "No web-preview changes to publish."
+            exit 0
+          fi
+          git commit -m "build: publish complete 561-group offline web preview [skip ci]"
+          git push origin HEAD:main
