@@ -1,0 +1,21 @@
+name: Export source for delivery
+on:
+  push:
+    paths: ['.github/workflows/export-source-once.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Archive source without credentials or Git metadata
+        run: git archive --format=zip --output="$RUNNER_TEMP/politics-source.zip" HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: politics-source-snapshot
+          path: ${{ runner.temp }}/politics-source.zip
+          retention-days: 1
