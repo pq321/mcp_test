@@ -1,0 +1,49 @@
+name: Recover verified grouped data
+on:
+  push:
+    paths: ['.github/workflows/recover-grouped-data.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Reassemble exact generated content from repository blobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import os, json, base64, hashlib, lzma, pathlib, urllib.request
+          shas='''9d126c44717b46c93dea822273775748638d80ea accc509285ce35fb0674819052c8f3b0fd9299dc 8fbd42ec8a1629f31214055d992d2e2573243710 75a15211323c566930e2f948058d16c9c14614a7 2a1ff017eda2cc941578563884d6869f15549e4f db838c0d602f3fdbd5c0c51756a532cd2b023919 a09002c13b1a197b1e9f7d8e25c0d85085d52dba d1f7ad69a64b280b4de31561757ac2f98867189e 02056314604cb1e7b07da546b567636748c9acef b5f92350ec8202a496d43575db1c284747236fd6 3728f0ba54b2d4583dbe60d436c6e13410da3e65 4bce199a8c64f116422c9d27babe00f4fa8ca8ef 8c829edc5bae1f026343d2dd0ad2df6e47a9912f 60582a056e215aa29447df06488232e284adc9da fc77a2daaa420c74b2cb2e795ae8847a4db07eec b6dd426ff73b5afad3580d15d1527e2cf0fffcc8'''.split()
+          chunks=[]
+          for sha in shas:
+              req=urllib.request.Request('https://api.github.com/repos/pq321/mcp_test/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+              obj=json.load(urllib.request.urlopen(req,timeout=60))
+              raw=base64.b64decode(obj['content'])
+              assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()==sha
+              chunks.append(raw)
+          raw=lzma.decompress(b''.join(chunks))
+          assert hashlib.sha256(raw).hexdigest()=='20b2236109e35b69244b7826da3e239a67b4f735e54f84977b5a6af0fa73d9e4'
+          pack=json.loads(raw); cards=pack['cards']
+          assert len(cards)==561 and len({c['id'] for c in cards})==561
+          assert {c['path'][0] for c in cards}=={'马原','毛中特','新思想','史纲','思修'}
+          pathlib.Path('data/suyi-full.json').write_bytes(raw)
+          pathlib.Path('preview/full-data.js').write_text('window.POLITICS_PACK='+json.dumps(pack,ensure_ascii=False,separators=(',',':'))+';\n',encoding='utf-8')
+          pages={p for c in cards for p in c['source_pages']}
+          assert pages==set(range(1,136))
+          coverage={'edition':'v0.7','card_count':len(cards),'subject_counts':{s:sum(c['path'][0]==s for c in cards) for s in ['马原','毛中特','新思想','史纲','思修']},'printed_pages':sorted(pages),'source_json_sha256':hashlib.sha256(raw).hexdigest(),'verification_note':'Full coverage is not a claim of full visual verification. Preserve each card content_status and source_method.','pages':[{'printed_page':p,'card_ids':[c['id'] for c in cards if p in c['source_pages']],'statuses':sorted({c['content_status'] for c in cards if p in c['source_pages']})} for p in range(1,136)]}
+          pathlib.Path('data/coverage.json').write_text(json.dumps(coverage,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print('Verified SHA-256, 561 unique groups, 5 subjects and all 135 printed pages.')
+          PY
+      - name: Commit verified full dataset
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/suyi-full.json data/coverage.json preview/full-data.js
+          git diff --cached --quiet || git commit -m 'feat: recover verified 561-group five-subject dataset'
+          git pull --rebase origin main
+          git push origin HEAD:main
