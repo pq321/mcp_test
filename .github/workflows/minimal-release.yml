@@ -4,8 +4,11 @@ on:
   push:
     branches: [main]
     paths:
-      - '.github/workflows/minimal-release.yml'
-      - 'scripts/finish_minimal_ui.py'
+      - 'source/minimal-v09-*.b64'
+      - 'app/**'
+      - 'preview/**'
+      - 'qa/**'
+      - 'scripts/build_preview.py'
 permissions:
   contents: write
   actions: read
@@ -15,24 +18,131 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
-      - name: Capture exact editable source
+        with:
+          fetch-depth: 0
+      - name: Apply checked source delta when present
         run: |
           python - <<'PY'
-          import subprocess,zipfile
+          import base64,hashlib,zlib,subprocess
           from pathlib import Path
-          paths=subprocess.check_output(['git','ls-files','-z']).decode().split('\0')
-          with zipfile.ZipFile('source-snapshot.zip','w',zipfile.ZIP_DEFLATED) as z:
-              for s in paths:
-                  if not s or s.endswith(('.mp3','.apk','.zip','.b64')): continue
-                  if s.startswith(('preview/audio/','source/')): continue
-                  if s.startswith('web-preview/') and s!='web-preview/audio-index.json': continue
-                  p=Path(s)
-                  if p.is_file(): z.write(p,s)
+          chunks=sorted(Path('source').glob('minimal-v09-*.b64'))
+          if chunks:
+              patch=zlib.decompress(base64.b64decode(''.join(p.read_text().strip() for p in chunks),validate=True))
+              assert hashlib.sha256(patch).hexdigest()=='7d1f67fb33c0e4d2091d7cf2c70b2e57b71d12c3808e0e07beae231108ffa033','Source transfer checksum mismatch'
+              subprocess.run(['git','apply','--check','-'],input=patch,check=True)
+              subprocess.run(['git','apply','-'],input=patch,check=True)
+          PY
+      - name: Reuse all verified recordings and build complete web product
+        run: |
+          set -euo pipefail
+          node --check preview/app.js
+          python scripts/validate_pack.py data/suyi-full.json
+          python scripts/validate_audio.py data/suyi-full.json web-preview
+          cp data/suyi-full.json app/src/main/assets/suyi-full.json
+          cp web-preview/audio-index.json app/src/main/assets/audio-index.json
+          mkdir -p app/src/main/assets/audio
+          cp web-preview/audio/*.mp3 app/src/main/assets/audio/
+          python scripts/build_preview.py --pack data/suyi-full.json --audio-index web-preview/audio-index.json --audio-dir web-preview/audio --out site
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          index=json.loads(Path('web-preview/audio-index.json').read_text())
+          Path('preview/audio-index.js').write_text('window.POLITICS_AUDIO_INDEX='+json.dumps(index,ensure_ascii=False,separators=(',',':'))+';\n',encoding='utf-8')
+          PY
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Compile full offline APK before emulator acceptance
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Real browser acceptance
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+          python qa/web_smoke.py
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Real Android interaction and media acceptance
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: |
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            python qa/android_smoke.py || (adb logcat -d > evidence/android-logcat.txt; adb exec-out screencap -p > evidence/android-failure.png; exit 1)
+      - name: Commit accepted source and full runnable preview
+        id: accepted
+        run: |
+          set -euo pipefail
+          cp site/index.html site/audio-index.json site/README.txt web-preview/
+          cp docs/MINIMAL_V09.md web-preview/README.md
+          python - <<'PY'
+          import json,hashlib,os
+          from pathlib import Path
+          root=Path('.')
+          files=['app/build/outputs/apk/debug/app-debug.apk','web-preview/index.html','preview/app.js','preview/app.css','data/suyi-full.json']
+          report={'version':'0.9.0','run_id':os.environ['GITHUB_RUN_ID'],'source_base':os.environ['GITHUB_SHA'],'audio_groups':561,'web':json.loads(Path('evidence/web-smoke.json').read_text()),'android':json.loads(Path('evidence/android-smoke.json').read_text()),'sha256':{p:hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in files}}
+          Path('docs/V09_ACCEPTANCE.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          readme=Path('README.md').read_text()
+          header='# PoliticsMemory 0.9 · 极简成组背诵\n\n完整网页：`web-preview/index.html`（包含561条录音）。Android APK 和网页完整ZIP在 Releases 的 `v0.9.0-minimal`。本次要求与验收见 `docs/MINIMAL_V09.md` 和 `docs/V09_ACCEPTANCE.json`。\n\n'
+          if not readme.startswith('# PoliticsMemory 0.9'): Path('README.md').write_text(header+readme,encoding='utf-8')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/build.gradle app/src/main/java preview scripts/build_preview.py qa/*.py docs/MINIMAL_V09.md docs/V09_ACCEPTANCE.json web-preview/index.html web-preview/audio-index.json web-preview/README.md web-preview/README.txt README.md evidence/*.png evidence/*-smoke.json
+          if compgen -G 'source/minimal-v09-*.b64' >/dev/null; then git rm source/minimal-v09-*.b64; fi
+          git diff --cached --quiet || git commit -m 'release: accepted minimal UI, 4x player and global loop [skip ci]'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Publish complete APK and web archive as release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p deliverables
+          cp app/build/outputs/apk/debug/app-debug.apk deliverables/PoliticsMemory-v0.9.0.apk
+          (cd site && zip -q -r ../deliverables/PoliticsMemory-v0.9.0-web.zip .)
+          (cd evidence && zip -q -r ../deliverables/PoliticsMemory-v0.9.0-evidence.zip .)
+          sha256sum deliverables/* > deliverables/SHA256SUMS.txt
+          gh release create v0.9.0-minimal deliverables/* --target '${{ steps.accepted.outputs.sha }}' --title 'PoliticsMemory 0.9 — minimal UI / 4x / global loop' --notes-file docs/MINIMAL_V09.md
+      - name: Capture final source and acceptance evidence
+        if: always()
+        run: |
+          python - <<'PY'
+          import zipfile
+          from pathlib import Path
+          with zipfile.ZipFile('inspection.zip','w',zipfile.ZIP_DEFLATED) as z:
+              for folder in ['app/src/main/java','preview','qa','docs','evidence']:
+                  for p in Path(folder).rglob('*'):
+                      if p.is_file() and p.suffix not in ['.mp3','.pyc'] and 'preview/audio/' not in str(p): z.write(p,str(p))
+              for p in ['app/build.gradle','scripts/build_preview.py']:
+                  z.write(p,p)
           PY
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: minimal-ui-source-snapshot
-          path: source-snapshot.zip
-          retention-days: 7
+          name: minimal-v09-inspection
+          path: inspection.zip
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: minimal-v09-deliverables
+          path: deliverables/
+          compression-level: 0
+          retention-days: 14
