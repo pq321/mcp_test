@@ -1,0 +1,128 @@
+name: Gesture-only hotfix 0.10.1
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/gesture-hotfix.yml']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: politics-gesture-hotfix
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply inverse finger mapping only
+        run: |
+          python scripts/reverse_gesture_v0101.py
+          node --check preview/app.js
+      - name: Reuse unchanged recordings and build complete web
+        run: |
+          python scripts/validate_audio.py data/suyi-full.json web-preview
+          mkdir -p app/src/main/assets/audio
+          cp data/suyi-full.json app/src/main/assets/suyi-full.json
+          cp web-preview/audio-index.json app/src/main/assets/audio-index.json
+          cp web-preview/audio/*.mp3 app/src/main/assets/audio/
+          python scripts/build_preview.py --pack data/suyi-full.json --audio-index web-preview/audio-index.json --audio-dir web-preview/audio --out site
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: politics-memory-debug-signing-v1
+      - name: Build full offline APK
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Verify physical browser drags and existing features
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+          python qa/web_smoke.py
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Verify installed Android physical finger drags
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: |
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            python qa/android_smoke.py || (adb logcat -d > evidence/gesture-failure.log; exit 1)
+      - name: Reuse unchanged Windows receiver
+        uses: actions/download-artifact@v4
+        with:
+          name: politics-v010-windows-receiver
+          path: site
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 43598525125
+      - name: Commit accepted source and rebuilt complete webpage
+        id: accepted
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,os,shutil
+          from pathlib import Path
+          notes='# PoliticsMemory 0.10.1 · 只对调滑动方向\n\n相对于已发布的0.10.0，Android和网页的实际手势已反转。\n\n以手指移动为准：从屏幕右侧拖到左侧，1→2；从左侧拖到右侧，2→1。最后一条与第一条仍双向循环，评分仍进入下一条。动画保持跟随手指。\n\n正文、字体、561条标题+正文录音、4倍速、自动下一条和电脑同步逻辑不变。电脑连接与备份说明仍见 docs/SYNC_V010.md，但其中旧滑动方向由本说明取代。\n\n网页入口 web-preview/index.html；本版安装包与完整电脑网页包在 Release v0.10.1-gesture。模拟器不是用户实体手机。\n'
+          Path('docs/GESTURE_V0101.md').write_text(notes,encoding='utf-8')
+          for name in ['index.html','README.txt']:shutil.copy2(Path('site')/name,Path('web-preview')/name)
+          Path('web-preview/README.md').write_text(notes+'\n---\n\n'+Path('docs/SYNC_V010.md').read_text().replace('手指 **向右滑 = 下一条；向左滑 = 上一条**','手指 **从右向左移动 = 下一条；从左向右移动 = 上一条**'),encoding='utf-8')
+          paths=['app/build/outputs/apk/debug/app-debug.apk','web-preview/index.html','preview/app.js','app/src/main/java/org/vector/politicsmemory/SwipePagerLayout.java','data/suyi-full.json','web-preview/audio-index.json','preview/app.css']
+          report={'version':'0.10.1','run_id':os.environ['GITHUB_RUN_ID'],'source_base':os.environ['GITHUB_SHA'],'change':'inverse of v0.10.0 physical finger gestures only','web_example':{'x_start':285,'x_end':75,'before':1,'after':2},'android_example':{'x_start':850,'x_end':200,'before':1,'after':2},'web':json.loads(Path('evidence/web-smoke.json').read_text()),'android':json.loads(Path('evidence/android-smoke.json').read_text()),'sha256':{p:hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in paths}}
+          previous=json.loads(Path('docs/V010_ACCEPTANCE.json').read_text())
+          for p in ['data/suyi-full.json','web-preview/audio-index.json','preview/app.css']:
+              assert report['sha256'][p]==previous['sha256'][p],p+' was unexpectedly changed'
+          assert hashlib.sha256(Path('site/PoliticsMemory-Sync.exe').read_bytes()).hexdigest()==previous['sha256']['site/PoliticsMemory-Sync.exe']
+          report['unchanged_content_audio_fonts_receiver']='PASS'
+          Path('docs/V0101_ACCEPTANCE.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          p=Path('README.md');p.write_text('# 当前版本 0.10.1 · 滑动方向已对调\n\n本次只反转0.10.0的手指滑动行为。最新说明：`docs/GESTURE_V0101.md`；验收：`docs/V0101_ACCEPTANCE.json`；完整网页：`web-preview/index.html`；安装包：Release `v0.10.1-gesture`。以下旧版方向说明不再适用。\n\n---\n\n'+p.read_text(),encoding='utf-8')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/build.gradle app/src/main/java/org/vector/politicsmemory/SwipePagerLayout.java preview/app.js scripts/build_preview.py qa/web_smoke.py qa/android_smoke.py docs/GESTURE_V0101.md docs/V0101_ACCEPTANCE.json web-preview/index.html web-preview/README.txt web-preview/README.md README.md evidence/web-smoke.json evidence/android-smoke.json evidence/*.png
+          git diff --cached --quiet || git commit -m 'fix: invert finger gestures in accepted Android and full web preview [skip ci]'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Publish complete updated packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p deliverables
+          cp app/build/outputs/apk/debug/app-debug.apk deliverables/PoliticsMemory-v0.10.1.apk
+          (cd site && zip -q -r ../deliverables/PoliticsMemory-v0.10.1-web.zip .)
+          cp docs/V0101_ACCEPTANCE.json deliverables/
+          (cd deliverables && sha256sum * > SHA256SUMS.txt)
+          gh release create v0.10.1-gesture deliverables/* --target '${{ steps.accepted.outputs.sha }}' --title 'PoliticsMemory 0.10.1 — inverse finger gestures' --notes-file docs/GESTURE_V0101.md
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: gesture-v0101-deliverables
+          path: deliverables/
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: gesture-v0101-diagnostics
+          path: evidence/
+          retention-days: 7
