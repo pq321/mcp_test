@@ -1,5 +1,5 @@
 {
-  "edition": "v0.7",
+  "edition": "v0.8",
   "card_count": 561,
   "subject_counts": {
     "马原": 127,
@@ -1808,5 +1808,23 @@
         "VISUALLY_REORGANIZED"
       ]
     }
-  ]
+  ],
+  "structural_node_audit": {
+    "source_file": "27苏一思维导图_141页终审底稿.json",
+    "printed_pages_checked": [
+      1,
+      75
+    ],
+    "structural_leaf_nodes": 2596,
+    "mapped_leaf_nodes": 2596,
+    "unmapped_leaf_nodes": 0,
+    "page_coverage": "135/135"
+  },
+  "audio_boundary": "五科561组离线MP3已在CI生成并通过音频文件SHA-256与正文SHA-256双重校验；最新源码构建正在重新生成并打包全部561组。",
+  "audio_generation": {
+    "status": "VERIFIED_ON_PREVIOUS_BUILD_AND_REBUILDING_LATEST",
+    "groups": 561,
+    "verified_run_id": 43571418404,
+    "latest_rebuild_run_id": 43573492139
+  }
 }
