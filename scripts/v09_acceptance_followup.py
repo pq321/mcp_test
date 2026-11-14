@@ -62,3 +62,28 @@ s=s.replace("report['file_url_offline_audio']='PASS';context.close()", """page.l
         report['file_url_offline_audio']='PASS';report['offline_seek']={'time':state['time'],'duration':state['duration']};context.close()""")
 p.write_text(s)
 p=Path('scripts/build_preview.py');s=p.read_text();s=s.replace('preview\\\\n\'','preview\\n\'').replace('speech.\\\\n\'','speech.\\n\'').replace('data.\\\\n\'','data.\\n\'');p.write_text(s)
+# A paused/hidden player must not issue accessibility text changes every 250 ms.
+p=Path('app/src/main/java/org/vector/politicsmemory/MainActivity.java');s=p.read_text()
+a=s.index('    private void refreshPlayerBar(){');b=s.index('    private void switchTab(',a)
+s=s[:a]+'''    private void setPlayerText(TextView view,String value){
+        if(!android.text.TextUtils.equals(view.getText(),value))view.setText(value);
+    }
+    private void refreshPlayerBar(){
+        if(playerBar==null)return;boolean active=SpeechService.active;
+        int visibility=active||currentTab==0?View.VISIBLE:View.GONE;
+        if(playerBar.getVisibility()!=visibility)playerBar.setVisibility(visibility);
+        if(visibility!=View.VISIBLE)return;
+        setPlayerText(playerPlay,active&&!SpeechService.paused?"Ⅱ":"▶");
+        setPlayerText(playerSpeedLabel,speedLabel(active?SpeechService.currentSpeed:speechSpeed()));
+        String title=active?SpeechService.currentTitle:pager!=null&&!session.isEmpty()?session.get(pager.index()).displayTitle():"";
+        setPlayerText(playerTitle,title);
+        int duration=active?SpeechService.currentDuration:0,position=active?SpeechService.currentPosition:0;
+        if(playerSeek.isEnabled()!=(duration>0))playerSeek.setEnabled(duration>0);
+        if(!seeking){
+            int progress=duration>0?(int)Math.min(1000,position*1000L/duration):0;
+            if(playerSeek.getProgress()!=progress)playerSeek.setProgress(progress);
+            setPlayerText(playerTime,formatTime(position)+" / "+formatTime(duration));
+        }
+    }
+'''+s[b:]
+p.write_text(s)
