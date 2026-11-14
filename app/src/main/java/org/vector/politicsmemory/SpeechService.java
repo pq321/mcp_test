@@ -26,6 +26,11 @@ public final class SpeechService extends Service {
     static final String TOGGLE="org.vector.politicsmemory.TOGGLE";
     static final String STOP="org.vector.politicsmemory.STOP";
     static final String SET_SPEED="org.vector.politicsmemory.SET_SPEED";
+    static final String SEEK="org.vector.politicsmemory.SEEK";
+    static final String EXTRA_POSITION="playback_position";
+    static volatile int currentPosition=0,currentDuration=0;
+    static volatile String currentTitle="";
+    static volatile float currentSpeed=1.0f;
     static final String EXTRA_FIRST="first_card_id";
     static final String EXTRA_IDS="session_ids";
     static final String EXTRA_SPEED="speech_speed";
@@ -57,8 +62,9 @@ public final class SpeechService extends Service {
         if(i==null)return START_NOT_STICKY;
         String action=i.getAction();
         if(STOP.equals(action)){stopPlayback();return START_NOT_STICKY;}
+        if(SEEK.equals(action)){int pos=Math.max(0,i.getIntExtra(EXTRA_POSITION,0));try{if(player!=null&&prepared)player.seekTo(pos);}catch(Exception e){Log.w(TAG,"seek",e);}return START_NOT_STICKY;}
         if(SET_SPEED.equals(action)){
-            speed=clampSpeed(i.getFloatExtra(EXTRA_SPEED,speed));
+            speed=clampSpeed(i.getFloatExtra(EXTRA_SPEED,speed));currentSpeed=speed;
             applySpeed();updateNotification();return START_NOT_STICKY;
         }
         if(TOGGLE.equals(action)){
@@ -117,8 +123,8 @@ public final class SpeechService extends Service {
             updateNotification();next.prepareAsync();
         }catch(Exception e){Log.e(TAG,"MP3 decoding error",e);advance(token,index);}
     }
-    private static float clampSpeed(float value){return Math.max(0.75f,Math.min(2.0f,value));}
-    private void applySpeed(){if(player!=null&&prepared)applySpeed(player);}
+    private static float clampSpeed(float value){return Math.max(0.75f,Math.min(4.0f,value));}
+    private void applySpeed(){if(player!=null&&prepared)applySpeed(player);currentSpeed=speed;}
     private void applySpeed(MediaPlayer target){
         try{if(android.os.Build.VERSION.SDK_INT>=23)target.setPlaybackParams(new PlaybackParams().setSpeed(speed).setPitch(1.0f));}
         catch(Exception e){Log.w(TAG,"Playback speed update rejected",e);}
@@ -163,7 +169,7 @@ public final class SpeechService extends Service {
          .addAction(android.R.drawable.ic_menu_close_clear_cancel,"停止",serviceIntent(STOP,2));
         return b.build();
     }
-    private void updateNotification(){
+    private void updateNotification(){\n        try{if(player!=null&&prepared){currentPosition=player.getCurrentPosition();currentDuration=player.getDuration();}}catch(Exception ignored){}
         NotificationManager m=getSystemService(NotificationManager.class);
         if(m!=null&&active)m.notify(NOTIFICATION_ID,notification());
     }
