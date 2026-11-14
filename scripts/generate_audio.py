@@ -15,8 +15,23 @@ import wave
 import zipfile
 
 
+def spoken_text(card):
+    path = '，'.join(card['path'])
+    title = (card.get('title') or card['path'][2]).strip()
+    parts = [
+        '知识点位置。' + path,
+        '知识点名称。' + title,
+        '问题。' + card['question'].strip(),
+        '答案。' + card['answer'].strip(),
+    ]
+    note = (card.get('notes') or '').strip()
+    if note:
+        parts.append('备注。' + note)
+    return '\n'.join(parts)
+
+
 def text_hash(card):
-    return hashlib.sha256((card['question'] + '\n' + card['answer']).encode('utf-8')).hexdigest()
+    return hashlib.sha256(spoken_text(card).encode('utf-8')).hexdigest()
 
 
 def render_pack(args):
@@ -36,7 +51,7 @@ def render_pack(args):
         sha = text_hash(card)
         rel = f'audio/{item_id}.mp3'
         output = audio_dir / f'{item_id}.mp3'
-        spoken = '问题。' + card['question'].strip() + '。答案。' + card['answer'].strip()
+        spoken = spoken_text(card)
         with tempfile.TemporaryDirectory(prefix='piper-') as tmp:
             wav = Path(tmp) / 'spoken.wav'
             with wave.open(str(wav), 'wb') as f:

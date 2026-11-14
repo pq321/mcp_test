@@ -45,7 +45,7 @@ public final class MainActivity extends Activity {
     private static final int DARK=Color.rgb(49,54,55), MUTED=Color.rgb(130,136,138);
     private static final int BACK=Color.rgb(247,247,247), WHITE=Color.WHITE;
     private static final int IMPORT=20,EXPORT_JSON=21,EXPORT_CSV=22;
-    private final String[] tabs={"复习","资料","统计","我的"};
+    private final String[] tabs={"复习","资料","统计"};
     private StudyStore store;
     private LinearLayout root,nav;
     private FrameLayout content;
@@ -105,14 +105,13 @@ public final class MainActivity extends Activity {
         currentTab=index;content.removeAllViews();pager=null;
         if(index==0)showReview();
         else if(index==1)showCatalogue();
-        else if(index==2)showStatistics();
-        else showSettings();
+        else showStatistics();
         showNav();
     }
     private void showNav(){
         nav.removeAllViews();
-        String[] symbols={"◷","▤","⌁","☰"};
-        for(int i=0;i<4;i++){
+        String[] symbols={"◷","▤","⌁"};
+        for(int i=0;i<3;i++){
             final int selected=i;
             LinearLayout cell=column();cell.setGravity(Gravity.CENTER);cell.setClickable(true);
             TextView icon=text(symbols[i],24,i==currentTab?TEAL:0xffa8abad,false);icon.setGravity(Gravity.CENTER);
@@ -137,11 +136,28 @@ public final class MainActivity extends Activity {
         return bar;
     }
     private void showFileMenu(){
-        String[] items={"导入素材、音频包或备份（JSON/ZIP）","导出完整备份（JSON）","导出学习记录（CSV）","查看数据格式说明"};
-        new AlertDialog.Builder(this).setTitle("本地资料管理").setItems(items,(d,which)->{
+        String[] items={"导入素材、音频包或备份（JSON/ZIP）","导出完整备份（JSON）","导出学习记录（CSV）",
+                "朗读倍速："+String.format(Locale.CHINA,"%.2f×",speechSpeed()),"每日目标："+dailyGoal+"组","查看数据格式说明"};
+        new AlertDialog.Builder(this).setTitle("本地工具").setItems(items,(d,which)->{
             if(which==0)chooseImport();else if(which==1)chooseExport(false);
-            else if(which==2)chooseExport(true);else showFormatHelp();
+            else if(which==2)chooseExport(true);else if(which==3)changeSpeechSpeed();
+            else if(which==4)changeGoal();else showFormatHelp();
         }).show();
+    }
+    private float speechSpeed(){
+        try{return Math.max(0.75f,Math.min(2f,Float.parseFloat(store.setting("speech_speed","1.0"))));}
+        catch(Exception e){return 1f;}
+    }
+    private void changeSpeechSpeed(){
+        final float[] values={0.75f,1f,1.25f,1.5f,1.75f,2f};
+        String[] labels={"0.75×","1.0×","1.25×","1.5×","1.75×","2.0×"};
+        int selected=1;for(int i=0;i<values.length;i++)if(Math.abs(values[i]-speechSpeed())<0.001f)selected=i;
+        new AlertDialog.Builder(this).setTitle("朗读倍速").setSingleChoiceItems(labels,selected,(dialog,which)->{
+            float speed=values[which];store.saveSetting("speech_speed",Float.toString(speed));
+            if(SpeechService.active){Intent i=new Intent(this,SpeechService.class);i.setAction(SpeechService.SET_SPEED);i.putExtra(SpeechService.EXTRA_SPEED,speed);startService(i);}
+            dialog.dismiss();Toast.makeText(this,"已设置为 "+labels[which],Toast.LENGTH_SHORT).show();
+            if(pager!=null)pager.refresh();
+        }).setNegativeButton("取消",null).show();
     }
     /** Play all cards from this heading, then continue to the following headings. */
     private TextView playButton(Runnable start){
@@ -153,7 +169,7 @@ public final class MainActivity extends Activity {
     }
     private void startContinuousSpeech(String firstId){
         Intent i=new Intent(this,SpeechService.class);i.setAction(SpeechService.PLAY);
-        i.putExtra(SpeechService.EXTRA_FIRST,firstId);
+        i.putExtra(SpeechService.EXTRA_FIRST,firstId);i.putExtra(SpeechService.EXTRA_SPEED,speechSpeed());
         launchSpeech(i);
     }
     private void startReviewSpeech(int position){
@@ -165,7 +181,7 @@ public final class MainActivity extends Activity {
         Intent i=new Intent(this,SpeechService.class);i.setAction(SpeechService.PLAY);
         ArrayList<String> ids=new ArrayList<>();
         for(int j=position;j<session.size();j++)ids.add(session.get(j).id);
-        i.putStringArrayListExtra(SpeechService.EXTRA_IDS,ids);
+        i.putStringArrayListExtra(SpeechService.EXTRA_IDS,ids);i.putExtra(SpeechService.EXTRA_SPEED,speechSpeed());
         launchSpeech(i);
     }
     private void launchSpeech(Intent i){
@@ -196,21 +212,21 @@ public final class MainActivity extends Activity {
         }
         Summary s=summary(all);
         LinearLayout summary=row();
-        summary.addView(statCard("今日目标",dailyGoal+"条", "点击复习开始",()->switchTab(0)),new LinearLayout.LayoutParams(0,dp(93),1.45f));
+        summary.addView(statCard("今日目标",dailyGoal+"组", "点击复习开始",()->switchTab(0)),new LinearLayout.LayoutParams(0,dp(76),1.45f));
         View gap=new View(this);summary.addView(gap,lp(8,1));
-        summary.addView(statCard("平均熟悉度",String.format(Locale.CHINA,"%.1f/4",s.average()),"掌握"+s.mastered+"条",()->switchTab(2)),new LinearLayout.LayoutParams(0,dp(93),1f));
-        body.addView(summary);spacer(body,10);
+        summary.addView(statCard("平均熟悉度",String.format(Locale.CHINA,"%.1f/4",s.average()),"掌握"+s.mastered+"组",()->switchTab(2)),new LinearLayout.LayoutParams(0,dp(76),1f));
+        body.addView(summary);spacer(body,7);
         LinearLayout shortcuts=row();
-        shortcuts.addView(tinyMetric("到期",s.due,TEAL,()->switchTab(0)),new LinearLayout.LayoutParams(0,dp(63),1));
-        shortcuts.addView(tinyMetric("未学习",s.unseen,MUTED,()->switchTab(0)),new LinearLayout.LayoutParams(0,dp(63),1));
-        shortcuts.addView(tinyMetric("待复核",s.needsReview,ORANGE,()->switchTab(0)),new LinearLayout.LayoutParams(0,dp(63),1));
-        body.addView(shortcuts);spacer(body,12);
+        shortcuts.addView(tinyMetric("到期",s.due,TEAL,()->switchTab(0)),new LinearLayout.LayoutParams(0,dp(50),1));
+        shortcuts.addView(tinyMetric("未学习",s.unseen,MUTED,()->switchTab(0)),new LinearLayout.LayoutParams(0,dp(50),1));
+        shortcuts.addView(tinyMetric("待复核",s.needsReview,ORANGE,()->switchTab(0)),new LinearLayout.LayoutParams(0,dp(50),1));
+        body.addView(shortcuts);spacer(body,8);
         body.addView(sectionTitle("科目 · 章节 · 考点"));spacer(body,6);
         LinkedHashMap<String,LinkedHashMap<String,LinkedHashMap<String,ArrayList<StudyCard>>>> groups=group(all);
         if(groups.isEmpty()){body.addView(text("尚无资料。点击右上角 ⋮ 导入素材JSON。",15,MUTED,false));return;}
         for(Map.Entry<String,LinkedHashMap<String,LinkedHashMap<String,ArrayList<StudyCard>>>> subject:groups.entrySet()){
             ArrayList<StudyCard> sCards=select(all,subject.getKey(),null,null);
-            LinearLayout card=column();card.setBackground(bg(WHITE,9));padding(card,14,12,14,10);
+            LinearLayout card=column();card.setBackground(bg(WHITE,9));padding(card,12,8,12,8);
             String key="open_sub_"+subject.getKey();
             LinearLayout inner=column();
             boolean expanded="1".equals(store.setting(key,"1"));inner.setVisibility(expanded?View.VISIBLE:View.GONE);
@@ -252,11 +268,11 @@ public final class MainActivity extends Activity {
                     topics.addView(tRow);
                     LinearLayout leaves=column();leaves.setVisibility(tExpanded?View.VISIBLE:View.GONE);
                     for(StudyCard c:tCards){
-                        LinearLayout leaf=column();padding(leaf,36,8,9,9);
-                        leaf.addView(text(c.question,13,DARK,true));
-                        TextView answerPreview=text(c.answer,12,MUTED,false);
-                        answerPreview.setMaxLines(3);answerPreview.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                        leaf.addView(answerPreview);
+                        LinearLayout leaf=column();padding(leaf,36,5,9,6);
+                        TextView leafTitle=text(c.displayTitle(),13,DARK,true);leaf.addView(leafTitle);
+                        TextView recall=text(c.question,11.5f,MUTED,false);recall.setMaxLines(2);
+                        recall.setEllipsize(android.text.TextUtils.TruncateAt.END);leaf.addView(recall);
+                        if(c.wrongQuestion)leaf.addView(text("做题错题",9,ORANGE,true));
                         leaf.setOnClickListener(v->startScoped(tCards,topic.getKey(),c.id));
                         leaves.addView(leaf);
                     }
@@ -269,6 +285,10 @@ public final class MainActivity extends Activity {
             }
             body.addView(card);spacer(body,10);
         }
+        spacer(body,4);body.addView(sectionTitle("其他资料"));spacer(body,5);
+        ArrayList<StudyCard> wrong=store.wrongCards(),weak=store.weakCards();
+        body.addView(collectionRow("错题", "做题错题 "+wrong.size()+"组 · 背诵薄弱 "+weak.size()+"组", ()->showWrongCollections()));
+        if(!groups.containsKey("时政")){spacer(body,7);body.addView(collectionRow("时政", "等待导入你的时政资料", ()->showCurrentAffairsInfo()));}
         // TextWatcher is attached after first render; update filtering when user submits.
         search.addTextChangedListener(new android.text.TextWatcher(){
             public void beforeTextChanged(CharSequence s,int st,int c,int a){}
@@ -281,15 +301,31 @@ public final class MainActivity extends Activity {
         });
     }
     private void showCatalogueReload(){content.removeAllViews();showCatalogue();}
+    private View collectionRow(String title,String subtitle,Runnable action){
+        LinearLayout box=column();box.setBackground(bg(WHITE,8));padding(box,14,10,14,10);
+        box.addView(text(title,14,DARK,true));box.addView(text(subtitle,11,MUTED,false));box.setOnClickListener(v->action.run());return box;
+    }
+    private void showWrongCollections(){
+        ArrayList<StudyCard> wrong=store.wrongCards(),weak=store.weakCards();
+        String[] labels={"做题错题（主动标记）","背诵薄弱（忘记／模糊）"};
+        new AlertDialog.Builder(this).setTitle("错题与薄弱知识组").setItems(labels,(d,which)->{
+            if(which==0)startScoped(wrong,"做题错题");else startScoped(weak,"背诵薄弱");
+        }).show();
+    }
+    private void showCurrentAffairsInfo(){
+        new AlertDialog.Builder(this).setTitle("时政资料").setMessage("时政目录已预留。你把时政资料发来后，可整理为独立知识组导入；不会用未经核实的时政内容填充。")
+                .setPositiveButton("知道了",null).show();
+    }
     private void hideKeyboard(View v){((InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(v.getWindowToken(),0);v.clearFocus();}
     private void showFiltered(LinearLayout parent,ArrayList<StudyCard> all,String query){
         parent.addView(text("搜索结果（按回车查询，清空后回车返回目录）",12,MUTED,false));spacer(parent,8);
         ArrayList<StudyCard> found=new ArrayList<>();String q=query.toLowerCase(Locale.ROOT);
-        for(StudyCard c:all) if((c.question+" "+c.answer+" "+c.topic+" "+c.chapter+" "+c.source).toLowerCase(Locale.ROOT).contains(q))found.add(c);
-        parent.addView(text("找到 "+found.size()+" 条",14,TEAL,true));spacer(parent,6);
+        for(StudyCard c:all) if((c.displayTitle()+" "+c.question+" "+c.answer+" "+c.topic+" "+c.chapter+" "+c.source).toLowerCase(Locale.ROOT).contains(q))found.add(c);
+        parent.addView(text("找到 "+found.size()+" 组",14,TEAL,true));spacer(parent,6);
         for(StudyCard c:found){
             LinearLayout item=column();item.setBackground(bg(WHITE,8));padding(item,12,10,12,10);
-            item.addView(text(c.question,15,DARK,true));item.addView(text(c.subject+" · "+c.chapter+" · "+c.topic,12,MUTED,false));
+            item.addView(text(c.displayTitle(),15,DARK,true));item.addView(text(c.question,12,MUTED,false));
+            item.addView(text(c.subject+" · "+c.chapter+" · "+c.topic,11,MUTED,false));
             item.setOnClickListener(v->startScoped(found,"搜索结果",c.id));parent.addView(item);spacer(parent,7);
         }
         // Search always allows keyboard submit, including while displaying search results.
@@ -363,7 +399,7 @@ public final class MainActivity extends Activity {
         if(session.isEmpty()){
             LinearLayout v=column();v.setGravity(Gravity.CENTER);padding(v,25,10,25,10);
             v.addView(text("今日复习已完成",24,TEAL,true));spacer(v,14);
-            TextView t=text("当前没有到期或待学习的新卡片。可以从资料目录选择章节继续背。",15,MUTED,false);
+            TextView t=text("当前没有到期或待学习的新知识组。可以从资料目录选择章节继续背。",15,MUTED,false);
             t.setGravity(Gravity.CENTER);v.addView(t);content.addView(v);return;
         }
         currentScope="今日复习";
@@ -391,61 +427,55 @@ public final class MainActivity extends Activity {
     private View makeStudyPage(int index){
         StudyCard card=session.get(index);
         LinearLayout page=column();page.setBackgroundColor(WHITE);
-        LinearLayout header=column();header.setBackground(gradient());padding(header,16,13,16,13);
+        LinearLayout header=column();header.setBackgroundColor(WHITE);padding(header,18,12,18,10);
         LinearLayout bar=row();
-        TextView back=text("‹",32,0xff31545a,false);padding(back,3,0,16,0);back.setOnClickListener(v->switchTab(1));
-        bar.addView(back);
-        TextView counter=text((index+1)+"/"+session.size(),16,0xff31545a,false);bar.addView(counter,new LinearLayout.LayoutParams(0,-2,1));
-        TextView mode=text(showAnswer?"显示答案":"隐藏答案",12,0xff31545a,false);
-        padding(mode,8,7,8,7);mode.setBackground(bg(0x4088d6d7,8));
+        TextView back=text("‹",30,DARK,false);padding(back,2,0,14,0);back.setOnClickListener(v->switchTab(1));bar.addView(back);
+        TextView counter=text((index+1)+"/"+session.size(),13,MUTED,false);bar.addView(counter,new LinearLayout.LayoutParams(0,-2,1));
+        TextView mode=text(showAnswer?"收起":"揭晓",12,TEAL,true);padding(mode,8,6,8,6);mode.setBackground(bg(0xffeef8f6,7));
         mode.setOnClickListener(v->toggleAnswer());bar.addView(mode);
-        TextView speak=text(SpeechService.active?(SpeechService.paused?"▶":"Ⅱ"):"▶",22,0xff31545a,true);
-        speak.setGravity(Gravity.CENTER);padding(speak,10,3,2,3);
-        speak.setContentDescription("自动连续朗读；再次点击暂停或继续");
+        TextView speed=text(String.format(Locale.CHINA,"%.2f×",speechSpeed()),11,TEAL,true);padding(speed,8,6,7,6);
+        speed.setOnClickListener(v->changeSpeechSpeed());bar.addView(speed);
+        TextView speak=text(SpeechService.active?(SpeechService.paused?"▶":"Ⅱ"):"♫",18,TEAL,true);
+        speak.setGravity(Gravity.CENTER);padding(speak,8,4,4,4);speak.setContentDescription("播放当前组及后续知识组；再次点击暂停或继续");
         speak.setOnClickListener(v->{startReviewSpeech(pager==null?index:pager.index());
-            speak.postDelayed(()->speak.setText(SpeechService.active?(SpeechService.paused?"▶":"Ⅱ"):"▶"),320);
+            speak.postDelayed(()->speak.setText(SpeechService.active?(SpeechService.paused?"▶":"Ⅱ"):"♫"),320);
         });bar.addView(speak);
-        header.addView(bar);spacer(header,11);
-        TextView question=text(card.question,"essay".equals(card.type)?22:25,0xff15282a,false);
-        question.setGravity(Gravity.CENTER);question.setMaxLines(4);header.addView(question,lp(-1,-2));spacer(header,13);
-        TextView labels=text(card.subject+" · "+card.chapter+" · "+card.topic,12,0xff36575b,false);
-        labels.setGravity(Gravity.CENTER);header.addView(labels);
+        TextView wrong=text(card.wrongQuestion?"已错题":"错题+",10,card.wrongQuestion?ORANGE:MUTED,true);
+        padding(wrong,7,5,2,5);wrong.setOnClickListener(v->{store.setWrong(card.id,!card.wrongQuestion);card.wrongQuestion=!card.wrongQuestion;pager.refresh();});bar.addView(wrong);
+        header.addView(bar);spacer(header,15);
+        TextView path=text(card.subject+"  /  "+card.chapter+"  /  "+card.topic,10,MUTED,false);
+        path.setGravity(Gravity.CENTER);header.addView(path);spacer(header,7);
+        TextView title=text(card.displayTitle(),19,DARK,true);title.setGravity(Gravity.CENTER);title.setLineSpacing(dp(2),1.0f);header.addView(title,lp(-1,-2));spacer(header,9);
+        TextView question=text(card.question,13,0xff667172,false);question.setGravity(Gravity.CENTER);question.setLineSpacing(dp(3),1.0f);
+        header.addView(question,lp(-1,-2));spacer(header,12);
+        View divider=new View(this);divider.setBackgroundColor(0xffe9eceb);header.addView(divider,lp(-1,1));
         page.addView(header,lp(-1,-2));
-        FrameLayout answerArea=new FrameLayout(this);
-        page.addView(answerArea,new LinearLayout.LayoutParams(-1,0,1));
+        FrameLayout answerArea=new FrameLayout(this);page.addView(answerArea,new LinearLayout.LayoutParams(-1,0,1));
         if(!showAnswer){
-            TextView prompt=text("请回忆知识点\n点击屏幕显示答案",17,0xff989898,false);
+            TextView prompt=text("请根据上面的问题回忆整组知识点\n点击屏幕揭晓答案",15,0xffa1a7a7,false);
             prompt.setGravity(Gravity.CENTER);prompt.setLineSpacing(dp(7),1);
-            answerArea.addView(prompt,new FrameLayout.LayoutParams(-1,-1));
-            answerArea.setOnClickListener(v->toggleAnswer());
+            answerArea.addView(prompt,new FrameLayout.LayoutParams(-1,-1));answerArea.setOnClickListener(v->toggleAnswer());
         }else{
             ScrollView answerScroll=new ScrollView(this);answerScroll.setFillViewport(true);
-            LinearLayout box=column();padding(box,22,25,22,28);
-            TextView label=text("答案 · "+card.level()+"（"+card.score+"/4）",13,TEAL,true);box.addView(label);spacer(box,15);
-            TextView answer=text(card.answer,"essay".equals(card.type)?17:19,DARK,false);
-            answer.setLineSpacing(dp(7),1.13f);answer.setTextIsSelectable(true);box.addView(answer);
-            if(!card.source.isEmpty()){
-                spacer(box,23);TextView src=text("来源："+card.source,12,MUTED,false);box.addView(src);
+            LinearLayout box=column();padding(box,21,19,21,22);
+            TextView answer=text(card.answer,16,DARK,false);
+            answer.setLineSpacing(dp(6),1.08f);answer.setTextIsSelectable(true);box.addView(answer);
+            if(card.notes!=null&&!card.notes.trim().isEmpty()){
+                spacer(box,13);TextView note=text(card.notes,9,0xffb54444,false);note.setGravity(Gravity.END);box.addView(note);
             }
-            box.addView(new View(this),lp(-1,90));
             answerScroll.addView(box);answerArea.addView(answerScroll,new FrameLayout.LayoutParams(-1,-1));
         }
         LinearLayout rating=column();rating.setBackground(stroke(WHITE,0,0xffededed));padding(rating,15,9,15,12);
-        LinearLayout buttonRow=row();
-        String[] names={"不会","模糊","会了"};String[] codes={"no","fuzzy","yes"};int[] colors={0xffb77c75,0xffb0a092,TEAL};
+        LinearLayout buttonRow=row();String[] names={"忘记","模糊","记住"};String[] codes={"no","fuzzy","yes"};int[] colors={0xffb77c75,0xffb0a092,TEAL};
         for(int i=0;i<3;i++){
-            final String code=codes[i];
-            TextView btn=text(names[i],16,showAnswer?colors[i]:0xffbcbcbc,true);
+            final String code=codes[i];TextView btn=text(names[i],15,showAnswer?colors[i]:0xffbcbcbc,true);
             btn.setGravity(Gravity.CENTER);btn.setBackground(stroke(showAnswer?0xfff9fcfb:0xfff8f8f8,8,showAnswer?colors[i]:0xffeeeeee));
-            LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(0,dp(48),1);if(i>0)bp.leftMargin=dp(9);
-            buttonRow.addView(btn,bp);
+            LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(0,dp(45),1);if(i>0)bp.leftMargin=dp(9);buttonRow.addView(btn,bp);
             if(showAnswer)btn.setOnClickListener(v->rateCurrent(card,code));
         }
-        rating.addView(buttonRow);spacer(rating,8);
-        TextView hint=text("← 左滑上一条   ·   右滑下一条 →   ·   显示模式跨条保留",11,MUTED,false);
-        hint.setGravity(Gravity.CENTER);rating.addView(hint);
-        page.addView(rating,lp(-1,-2));
-        return page;
+        rating.addView(buttonRow);spacer(rating,7);
+        TextView hint=text("← 左滑上一组   ·   右滑下一组 →",10,MUTED,false);hint.setGravity(Gravity.CENTER);rating.addView(hint);
+        page.addView(rating,lp(-1,-2));return page;
     }
     private void toggleAnswer(){
         showAnswer=!showAnswer;store.saveSetting("show_answer",showAnswer?"true":"false");
@@ -460,7 +490,7 @@ public final class MainActivity extends Activity {
             c.lastRating=choice;c.reviewCount++;c.lastReviewAt=now;c.needsReview=false;
             int current=pager.index();
             if(current+1<session.size())pager.advanceAfterRating();
-            else {pager.refresh();Toast.makeText(this,"本组已到最后一条，背诵结果已保存",Toast.LENGTH_SHORT).show();}
+            else {pager.refresh();Toast.makeText(this,"本组已到最后一组，背诵结果已保存",Toast.LENGTH_SHORT).show();}
         }catch(Exception e){error("保存失败："+e.getMessage());}
     }
     private void showStatistics(){
@@ -482,44 +512,20 @@ public final class MainActivity extends Activity {
             body.addView(item);spacer(body,8);
         }
         spacer(body,16);
-        body.addView(text("掌握判定：至少两次不同日期点“会了”，最近评级仍为“会了”，且内容未改版待复核。",13,MUTED,false));
+        body.addView(text("做题错题 "+store.wrongCards().size()+" 组 · 背诵薄弱 "+store.weakCards().size()+" 组",13,ORANGE,true));spacer(body,8);
+        body.addView(text("掌握判定：至少两次不同日期点“记住”，最近评级仍为“记住”，且内容未改版待复核。",13,MUTED,false));
         spacer(body,8);
         body.addView(text("熟悉度 0—4：不会0、模糊1、熟悉2、掌握3、牢固4。点击不会降到0；内容修改后需重新复核。",13,MUTED,false));
-    }
-    private void showSettings(){
-        ScrollView scroll=new ScrollView(this);content.addView(scroll);LinearLayout body=column();padding(body,17,0,17,20);scroll.addView(body);
-        body.addView(titleBar("我的 · 本地设置",false));spacer(body,15);
-        body.addView(text("完全离线 · 不需要登录 · 不声明网络权限",14,TEAL,true));spacer(body,20);
-        addSettingButton(body,"导入素材或备份","选择JSON资料，或包含MP3的离线ZIP素材包",this::chooseImport);
-        addSettingButton(body,"导出完整备份","JSON含素材、熟悉度、复习日志；Codex可以直接读取",()->chooseExport(false));
-        addSettingButton(body,"导出学习记录","CSV包含知识点、掌握状态和复习时间",()->chooseExport(true));
-        addSettingButton(body,"每日目标："+dailyGoal+"条","仅影响每日复习队列数量；资料目录不受影响",this::changeGoal);
-        addSettingButton(body,"查看数据格式","可在电脑上生成新素材包，导入原有条目会保留进度",this::showFormatHelp);
-        spacer(body,19);
-        body.addView(text("背诵记录自动写入手机本地SQLite；只有你主动导出时，才产生可复制到电脑的文件。",13,MUTED,false));
-        spacer(body,12);
-        body.addView(text("左滑 = 上一条；右滑 = 下一条；答案显隐状态随滑动保留。",13,MUTED,false));
-        spacer(body,13);
-        body.addView(text("连续朗读使用系统离线中文TTS语音；息屏时由媒体通知维持，可暂停、继续、停止。",13,MUTED,false));
-        spacer(body,8);
-        body.addView(text("如果没有声音，请在手机系统设置中安装中文离线语音数据。暂停后从当前知识点重新朗读。",12,MUTED,false));
-        spacer(body,10);
-        body.addView(text("版本 0.2 · 所有资料及掌握记录均保存在设备上",12,MUTED,false));
-    }
-    private void addSettingButton(LinearLayout parent,String title,String sub,Runnable action){
-        LinearLayout view=column();view.setBackground(bg(WHITE,9));padding(view,17,14,17,13);
-        view.addView(text(title,17,DARK,true));spacer(view,5);view.addView(text(sub,12,MUTED,false));
-        view.setOnClickListener(v->action.run());parent.addView(view);spacer(parent,10);
     }
     private void changeGoal(){
         String[] choices={"10","20","25","30","50","100"};
         new AlertDialog.Builder(this).setTitle("每日背诵目标").setItems(choices,(dialog,which)->{
-            dailyGoal=Integer.parseInt(choices[which]);store.saveSetting("daily_goal",choices[which]);switchTab(3);
+            dailyGoal=Integer.parseInt(choices[which]);store.saveSetting("daily_goal",choices[which]);switchTab(currentTab);
         }).show();
     }
     private void showFormatHelp(){
         new AlertDialog.Builder(this).setTitle("素材导入格式 v1")
-                .setMessage("JSON顶层字段：schema_version=1、pack_id、pack_revision、title、cards。\n每张卡包含稳定id、revision、path[科目,章节,考点]、type(keypoint/essay)、question、answer、source和order。\n同ID更新内容时保留复习历史，并标记待复核。\n完整示例和Codex说明见随源码附带的docs/data-format.md。")
+                .setMessage("JSON顶层字段：schema_version=1、pack_id、pack_revision、title、cards。\n每张卡包含稳定id、revision、path[科目,章节,考点]、title、question、answer、notes、source、content_status和order；type支持group/keypoint/essay。\n同ID更新内容时保留复习历史，正文变更会标记待复核。\n做题错题独立标记，不与背诵忘记／模糊混为一谈。")
                 .setPositiveButton("知道了",null).show();
     }
     private void chooseImport(){
@@ -568,15 +574,16 @@ public final class MainActivity extends Activity {
     }
     private static String csvQuote(String v){return "\""+(v==null?"":v).replace("\"","\"\"")+"\"";}
     private String exportCsv(){
-        StringBuilder sb=new StringBuilder("\uFEFFid,pack_id,subject,chapter,topic,question,source,score,level,mastered,review_count,last_rating,last_review_at,due_at,needs_review\n");
+        StringBuilder sb=new StringBuilder("\uFEFFid,pack_id,subject,chapter,topic,title,question,answer,notes,source,score,level,mastered,review_count,last_rating,last_review_at,due_at,needs_review,wrong_question\n");
         for(StudyCard c:store.allCards()){
             sb.append(csvQuote(c.id)).append(',').append(csvQuote(c.packId)).append(',')
                     .append(csvQuote(c.subject)).append(',').append(csvQuote(c.chapter)).append(',')
-                    .append(csvQuote(c.topic)).append(',').append(csvQuote(c.question)).append(',')
-                    .append(csvQuote(c.source)).append(',').append(c.score).append(',')
+                    .append(csvQuote(c.topic)).append(',').append(csvQuote(c.displayTitle())).append(',')
+                    .append(csvQuote(c.question)).append(',').append(csvQuote(c.answer)).append(',')
+                    .append(csvQuote(c.notes)).append(',').append(csvQuote(c.source)).append(',').append(c.score).append(',')
                     .append(csvQuote(c.level())).append(',').append(c.mastered()).append(',')
                     .append(c.reviewCount).append(',').append(csvQuote(c.lastRating)).append(',')
-                    .append(c.lastReviewAt).append(',').append(c.dueAt).append(',').append(c.needsReview).append('\n');
+                    .append(c.lastReviewAt).append(',').append(c.dueAt).append(',').append(c.needsReview).append(',').append(c.wrongQuestion).append('\n');
         }
         return sb.toString();
     }

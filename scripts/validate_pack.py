@@ -20,10 +20,16 @@ def check(path):
         ids.add(cid)
         assert int(c.get('revision',1))>0
         assert len(c['path'])==3 and all(isinstance(x,str) and x.strip() for x in c['path']),f'bad path {cid}'
-        assert c.get('type','keypoint') in ('keypoint','essay')
+        assert c.get('type','keypoint') in ('keypoint','essay','group')
         assert 1<=len(c['question'].strip())<=1500
         assert 1<=len(c['answer'].strip())<=25000
-        assert len(c.get('source',''))<=500
+        assert isinstance(c.get('title',c['path'][2]),str) and len(c.get('title',c['path'][2]))<=200
+        assert isinstance(c.get('notes',''),str) and len(c.get('notes',''))<=1000
+        assert isinstance(c.get('source',''),str) and len(c.get('source',''))<=500
+        assert isinstance(c.get('content_status',''),str) and len(c.get('content_status',''))<=100
+        assert isinstance(c.get('order',n),int)
+        if 'source_pages' in c:
+            assert isinstance(c['source_pages'],list) and all(isinstance(x,int) and 1<=x<=135 for x in c['source_pages'])
     print(f'OK: {path}: {len(cards)} cards, {len({c["path"][1] for c in cards})} chapters, v{obj["pack_revision"]}')
 
 

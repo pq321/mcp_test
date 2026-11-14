@@ -25,7 +25,7 @@ import java.util.UUID;
 /** Single-file SQLite database; imports/backup use platform JSON, no network dependency. */
 final class StudyStore extends SQLiteOpenHelper {
     static final String DB = "politics-memory.db";
-    static final int SCHEMA = 1;
+    static final int SCHEMA = 2;
     final Context context;
 
     StudyStore(Context ctx) { super(ctx, DB, null, SCHEMA); context = ctx.getApplicationContext(); }
@@ -36,17 +36,23 @@ final class StudyStore extends SQLiteOpenHelper {
     }
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE packs (id TEXT PRIMARY KEY, title TEXT NOT NULL, rev INTEGER NOT NULL, imported_at INTEGER NOT NULL)");
-        db.execSQL("CREATE TABLE cards (id TEXT PRIMARY KEY, pack_id TEXT NOT NULL, rev INTEGER NOT NULL, subject TEXT NOT NULL, chapter TEXT NOT NULL, topic TEXT NOT NULL, type TEXT NOT NULL, question TEXT NOT NULL, answer TEXT NOT NULL, source TEXT NOT NULL, pos INTEGER NOT NULL)");
+        db.execSQL("CREATE TABLE cards (id TEXT PRIMARY KEY, pack_id TEXT NOT NULL, rev INTEGER NOT NULL, subject TEXT NOT NULL, chapter TEXT NOT NULL, topic TEXT NOT NULL, type TEXT NOT NULL, question TEXT NOT NULL, answer TEXT NOT NULL, source TEXT NOT NULL, pos INTEGER NOT NULL, title TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', content_status TEXT NOT NULL DEFAULT '')");
         db.execSQL("CREATE INDEX cards_path ON cards(subject,chapter,topic,pos,id)");
         db.execSQL("CREATE TABLE reviews (card_id TEXT PRIMARY KEY, score INTEGER NOT NULL DEFAULT 0, review_count INTEGER NOT NULL DEFAULT 0, due_at INTEGER NOT NULL DEFAULT 0, last_review_at INTEGER NOT NULL DEFAULT 0, last_rating TEXT NOT NULL DEFAULT '', last_yes_day TEXT NOT NULL DEFAULT '', needs_review INTEGER NOT NULL DEFAULT 0)");
         db.execSQL("CREATE INDEX reviews_due ON reviews(due_at)");
         db.execSQL("CREATE TABLE events (id TEXT PRIMARY KEY, card_id TEXT NOT NULL, rating TEXT NOT NULL, score_before INTEGER NOT NULL, score_after INTEGER NOT NULL, at INTEGER NOT NULL)");
         db.execSQL("CREATE INDEX events_by_card ON events(card_id,at)");
         db.execSQL("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+        db.execSQL("CREATE TABLE wrong_cards (card_id TEXT PRIMARY KEY, marked_at INTEGER NOT NULL)");
     }
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        // Future migrations must be additive; never discard a learner's progress.
-        if (oldVersion != newVersion) throw new IllegalStateException("Missing database migration " + oldVersion + " -> " + newVersion);
+        // Additive migration only: keep every existing rating, event and setting.
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE cards ADD COLUMN title TEXT NOT NULL DEFAULT ''");
+            db.execSQL("ALTER TABLE cards ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+            db.execSQL("ALTER TABLE cards ADD COLUMN content_status TEXT NOT NULL DEFAULT ''");
+            db.execSQL("CREATE TABLE IF NOT EXISTS wrong_cards (card_id TEXT PRIMARY KEY, marked_at INTEGER NOT NULL)");
+        }
     }
 
     static String readText(InputStream in, int maxBytes) throws IOException {
@@ -60,9 +66,9 @@ final class StudyStore extends SQLiteOpenHelper {
             return out.toString(StandardCharsets.UTF_8.name());
         }
     }
-    /** Upgrade built-in heading metadata without deleting ratings; preserves existing material packs. */
+    /** Install the complete five-subject Su Yi pack; never delete ratings from older packs. */
     void installStarterOnce() throws IOException, JSONException {
-        try (InputStream in = context.getAssets().open("starter-sixiu-k.json")) {
+        try (InputStream in = context.getAssets().open("suyi-full.json")) {
             JSONObject pack=new JSONObject(readText(in,20*1024*1024));
             String id=pack.getString("pack_id");int incoming=pack.getInt("pack_revision");
             int existing=0;
@@ -129,11 +135,15 @@ final class StudyStore extends SQLiteOpenHelper {
             if(c.subject.isEmpty()||c.chapter.isEmpty()||c.topic.isEmpty()) throw new JSONException("三级标题不能为空: "+c.id);
             if(c.subject.length()>60||c.chapter.length()>80||c.topic.length()>100) throw new JSONException("标题过长: "+c.id);
             c.type=item.optString("type","keypoint");
-            if(!"keypoint".equals(c.type)&&!"essay".equals(c.type)) throw new JSONException("未知卡片类型: "+c.type);
+            if(!"keypoint".equals(c.type)&&!"essay".equals(c.type)&&!"group".equals(c.type)) throw new JSONException("未知卡片类型: "+c.type);
+            c.title=item.optString("title",c.topic).trim();
+            if(c.title.isEmpty()) c.title=c.topic;
             c.question=required(item,"question",1500);
             c.answer=required(item,"answer",25000);
+            c.notes=item.optString("notes","").trim();
             c.source=item.optString("source","").trim();
-            if(c.source.length()>500) throw new JSONException("source太长: "+c.id);
+            c.contentStatus=item.optString("content_status","").trim();
+            if(c.source.length()>500||c.notes.length()>1000||c.contentStatus.length()>100) throw new JSONException("备注或来源字段过长: "+c.id);
             c.order=item.optInt("order",i+1);
             pack.cards.add(c);
         }
@@ -144,7 +154,8 @@ final class StudyStore extends SQLiteOpenHelper {
         v.put("id",c.id);v.put("pack_id",c.packId);v.put("rev",c.revision);
         v.put("subject",c.subject);v.put("chapter",c.chapter);v.put("topic",c.topic);
         v.put("type",c.type);v.put("question",c.question);v.put("answer",c.answer);
-        v.put("source",c.source);v.put("pos",c.order);
+        v.put("source",c.source);v.put("pos",c.order);v.put("title",c.title==null?"":c.title);
+        v.put("notes",c.notes==null?"":c.notes);v.put("content_status",c.contentStatus==null?"":c.contentStatus);
         return v;
     }
     private static void mergePack(SQLiteDatabase db,Pack pack,ImportResult out) throws JSONException {
@@ -154,7 +165,7 @@ final class StudyStore extends SQLiteOpenHelper {
         }
         if(pack.revision<latest) throw new JSONException("这是旧版素材包；现有包版本"+latest+"，导入版本"+pack.revision);
         for(StudyCard card:pack.cards){
-            try(Cursor c=db.rawQuery("SELECT pack_id,rev,subject,chapter,topic,type,question,answer,source,pos FROM cards WHERE id=?",new String[]{card.id})){
+            try(Cursor c=db.rawQuery("SELECT pack_id,rev,subject,chapter,topic,type,question,answer,source,pos,title,notes,content_status FROM cards WHERE id=?",new String[]{card.id})){
                 if(!c.moveToFirst()) {
                     db.insertOrThrow("cards",null,cardValues(card)); out.added++;
                     continue;
@@ -164,7 +175,9 @@ final class StudyStore extends SQLiteOpenHelper {
                 if(card.revision<existingRev){out.skipped++;continue;}
                 boolean semanticChanged=!card.type.equals(c.getString(5))||!card.question.equals(c.getString(6))||!card.answer.equals(c.getString(7));
                 boolean metadataChanged=!card.subject.equals(c.getString(2))||!card.chapter.equals(c.getString(3))
-                        ||!card.topic.equals(c.getString(4))||!card.source.equals(c.getString(8))||card.order!=c.getInt(9);
+                        ||!card.topic.equals(c.getString(4))||!card.source.equals(c.getString(8))||card.order!=c.getInt(9)
+                        ||!safe(card.title).equals(c.getString(10))||!safe(card.notes).equals(c.getString(11))
+                        ||!safe(card.contentStatus).equals(c.getString(12));
                 if(!semanticChanged && !metadataChanged && card.revision==existingRev){out.unchanged++;continue;}
                 db.update("cards",cardValues(card),"id=?",new String[]{card.id});
                 if(semanticChanged){
@@ -178,21 +191,24 @@ final class StudyStore extends SQLiteOpenHelper {
         db.insertWithOnConflict("packs",null,pv,SQLiteDatabase.CONFLICT_REPLACE);
     }
 
+    private static String safe(String s){return s==null?"":s;}
     ArrayList<StudyCard> allCards() {
         ArrayList<StudyCard> list=new ArrayList<>();
-        String sql="SELECT c.id,c.pack_id,c.rev,c.subject,c.chapter,c.topic,c.type,c.question,c.answer,c.source,c.pos,"+
+        // The retired 93 short-card starter pack stays in backups but is not mixed into the 561 grouped cards.
+        String sql="SELECT c.id,c.pack_id,c.rev,c.subject,c.chapter,c.topic,c.type,c.question,c.answer,c.source,c.pos,c.title,c.notes,c.content_status,"+
                 "COALESCE(r.score,0),COALESCE(r.review_count,0),COALESCE(r.due_at,0),COALESCE(r.last_review_at,0),"+
-                "COALESCE(r.last_rating,''),COALESCE(r.last_yes_day,''),COALESCE(r.needs_review,0) "+
-                "FROM cards c LEFT JOIN reviews r ON r.card_id=c.id ORDER BY c.subject,c.chapter,c.topic,c.pos,c.id";
+                "COALESCE(r.last_rating,''),COALESCE(r.last_yes_day,''),COALESCE(r.needs_review,0),CASE WHEN w.card_id IS NULL THEN 0 ELSE 1 END "+
+                "FROM cards c LEFT JOIN reviews r ON r.card_id=c.id LEFT JOIN wrong_cards w ON w.card_id=c.id "+
+                "WHERE c.pack_id!='politics-sixiu-k' ORDER BY c.subject,c.chapter,c.topic,c.pos,c.id";
         try(Cursor c=getReadableDatabase().rawQuery(sql,null)){
             while(c.moveToNext()) {
                 StudyCard a=new StudyCard();
                 a.id=c.getString(0);a.packId=c.getString(1);a.revision=c.getInt(2);
                 a.subject=c.getString(3);a.chapter=c.getString(4);a.topic=c.getString(5);
                 a.type=c.getString(6);a.question=c.getString(7);a.answer=c.getString(8);
-                a.source=c.getString(9);a.order=c.getInt(10);
-                a.score=c.getInt(11);a.reviewCount=c.getInt(12);a.dueAt=c.getLong(13);a.lastReviewAt=c.getLong(14);
-                a.lastRating=c.getString(15);a.lastYesDay=c.getString(16);a.needsReview=c.getInt(17)!=0;
+                a.source=c.getString(9);a.order=c.getInt(10);a.title=c.getString(11);a.notes=c.getString(12);a.contentStatus=c.getString(13);
+                a.score=c.getInt(14);a.reviewCount=c.getInt(15);a.dueAt=c.getLong(16);a.lastReviewAt=c.getLong(17);
+                a.lastRating=c.getString(18);a.lastYesDay=c.getString(19);a.needsReview=c.getInt(20)!=0;a.wrongQuestion=c.getInt(21)!=0;
                 list.add(a);
             }
         }
@@ -202,6 +218,21 @@ final class StudyStore extends SQLiteOpenHelper {
         for(StudyCard c:all) if(c.id.equals(id)) return c;
         return null;
     }
+    boolean isWrong(String id) {
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT 1 FROM wrong_cards WHERE card_id=?",new String[]{id})) { return c.moveToFirst(); }
+    }
+    void setWrong(String id,boolean marked) {
+        SQLiteDatabase db=getWritableDatabase();
+        if(marked){ContentValues v=new ContentValues();v.put("card_id",id);v.put("marked_at",System.currentTimeMillis());db.insertWithOnConflict("wrong_cards",null,v,SQLiteDatabase.CONFLICT_REPLACE);}
+        else db.delete("wrong_cards","card_id=?",new String[]{id});
+    }
+    ArrayList<StudyCard> wrongCards() {
+        ArrayList<StudyCard> out=new ArrayList<>();for(StudyCard c:allCards())if(c.wrongQuestion)out.add(c);return out;
+    }
+    ArrayList<StudyCard> weakCards() {
+        ArrayList<StudyCard> out=new ArrayList<>();for(StudyCard c:allCards())if("no".equals(c.lastRating)||"fuzzy".equals(c.lastRating))out.add(c);return out;
+    }
+
     void rate(String id,String rating) {
         if(!"yes".equals(rating)&&!"no".equals(rating)&&!"fuzzy".equals(rating)) throw new IllegalArgumentException("rating");
         SQLiteDatabase db=getWritableDatabase();long now=System.currentTimeMillis();
@@ -247,12 +278,13 @@ final class StudyStore extends SQLiteOpenHelper {
                 JSONObject pack=new JSONObject();pack.put("schema_version",1);pack.put("pack_id",p.getString(0));
                 pack.put("title",p.getString(1));pack.put("pack_revision",p.getInt(2));
                 JSONArray cards=new JSONArray();
-                try(Cursor c=db.rawQuery("SELECT id,rev,subject,chapter,topic,type,question,answer,source,pos FROM cards WHERE pack_id=? ORDER BY pos,id",new String[]{p.getString(0)})){
+                try(Cursor c=db.rawQuery("SELECT id,rev,subject,chapter,topic,type,question,answer,source,pos,title,notes,content_status FROM cards WHERE pack_id=? ORDER BY pos,id",new String[]{p.getString(0)})){
                     while(c.moveToNext()){
                         JSONObject x=new JSONObject();x.put("id",c.getString(0));x.put("revision",c.getInt(1));
                         x.put("path",new JSONArray().put(c.getString(2)).put(c.getString(3)).put(c.getString(4)));
                         x.put("type",c.getString(5));x.put("question",c.getString(6));x.put("answer",c.getString(7));
-                        x.put("source",c.getString(8));x.put("order",c.getInt(9));cards.put(x);
+                        x.put("source",c.getString(8));x.put("order",c.getInt(9));x.put("title",c.getString(10));
+                        x.put("notes",c.getString(11));x.put("content_status",c.getString(12));cards.put(x);
                     }
                 }
                 pack.put("cards",cards);packages.put(pack);
@@ -269,6 +301,9 @@ final class StudyStore extends SQLiteOpenHelper {
             }
         }
         out.put("reviews",reviews);
+        JSONArray wrongIds=new JSONArray();
+        try(Cursor c=db.rawQuery("SELECT card_id FROM wrong_cards ORDER BY card_id",null)){while(c.moveToNext())wrongIds.put(c.getString(0));}
+        out.put("wrong_ids",wrongIds);
         JSONArray events=new JSONArray();
         try(Cursor c=db.rawQuery("SELECT id,card_id,rating,score_before,score_after,at FROM events ORDER BY at,id",null)) {
             while(c.moveToNext()) {
@@ -291,7 +326,7 @@ final class StudyStore extends SQLiteOpenHelper {
         ArrayList<Pack> parsed=new ArrayList<>();
         for(int i=0;i<packs.length();i++) parsed.add(validatePack(packs.getJSONObject(i)));
         JSONArray reviews=backup.optJSONArray("reviews");JSONArray events=backup.optJSONArray("events");
-        JSONObject settings=backup.optJSONObject("settings");
+        JSONArray wrongIds=backup.optJSONArray("wrong_ids");JSONObject settings=backup.optJSONObject("settings");
         SQLiteDatabase db=getWritableDatabase();ImportResult result=new ImportResult();
         db.beginTransaction();
         try {
@@ -323,6 +358,12 @@ final class StudyStore extends SQLiteOpenHelper {
                 db.insertWithOnConflict("reviews",null,rv,SQLiteDatabase.CONFLICT_REPLACE);
                 result.restored++;
             }
+            if(wrongIds!=null) for(int i=0;i<wrongIds.length();i++){
+                String id=wrongIds.getString(i);
+                try(Cursor exists=db.rawQuery("SELECT 1 FROM cards WHERE id=?",new String[]{id})){
+                    if(exists.moveToFirst()){ContentValues w=new ContentValues();w.put("card_id",id);w.put("marked_at",System.currentTimeMillis());db.insertWithOnConflict("wrong_cards",null,w,SQLiteDatabase.CONFLICT_IGNORE);}
+                }
+            }
             if(events!=null) for(int i=0;i<events.length();i++){
                 JSONObject src=events.getJSONObject(i);ContentValues ev=new ContentValues();
                 ev.put("id",required(src,"id",128));ev.put("card_id",required(src,"card_id",128));
@@ -337,7 +378,7 @@ final class StudyStore extends SQLiteOpenHelper {
                 while(keys.hasNext()) {
                     String key=keys.next();
                     // Settings with UX scope only; unknown keys are skipped.
-                    if(!"daily_goal".equals(key)&&!"show_answer".equals(key)) continue;
+                    if(!"daily_goal".equals(key)&&!"show_answer".equals(key)&&!"speech_speed".equals(key)) continue;
                     ContentValues sv=new ContentValues();sv.put("key",key);sv.put("value",settings.optString(key,""));
                     db.insertWithOnConflict("settings",null,sv,SQLiteDatabase.CONFLICT_REPLACE);
                 }

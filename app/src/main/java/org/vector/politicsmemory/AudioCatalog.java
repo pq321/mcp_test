@@ -32,7 +32,16 @@ final class AudioCatalog {
         if(file.isFile())try(InputStream in=new FileInputStream(file)){load(in,imported);}
         catch(Exception e){Log.w(TAG,"Cannot read imported audio index",e);}
     }
-    static String contentHash(StudyCard c){return digest((c.question+"\n"+c.answer).getBytes(StandardCharsets.UTF_8));}
+    static String spokenText(StudyCard c){
+        String title=c.title==null||c.title.trim().isEmpty()?c.topic:c.title.trim();
+        StringBuilder s=new StringBuilder();
+        s.append("知识点位置。").append(c.subject).append('，').append(c.chapter).append('，').append(c.topic)
+         .append("\n知识点名称。").append(title).append("\n问题。").append(c.question.trim())
+         .append("\n答案。").append(c.answer.trim());
+        if(c.notes!=null&&!c.notes.trim().isEmpty())s.append("\n备注。").append(c.notes.trim());
+        return s.toString();
+    }
+    static String contentHash(StudyCard c){return digest(spokenText(c).getBytes(StandardCharsets.UTF_8));}
     static String digest(byte[] value){
         try{byte[] h=MessageDigest.getInstance("SHA-256").digest(value);
             StringBuilder sb=new StringBuilder(64);for(byte b:h)sb.append(String.format(java.util.Locale.US,"%02x",b&255));

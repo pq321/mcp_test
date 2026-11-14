@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.media.AudioAttributes;
 import android.media.MediaPlayer;
+import android.media.PlaybackParams;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -24,8 +25,10 @@ public final class SpeechService extends Service {
     static final String PLAY="org.vector.politicsmemory.PLAY";
     static final String TOGGLE="org.vector.politicsmemory.TOGGLE";
     static final String STOP="org.vector.politicsmemory.STOP";
+    static final String SET_SPEED="org.vector.politicsmemory.SET_SPEED";
     static final String EXTRA_FIRST="first_card_id";
     static final String EXTRA_IDS="session_ids";
+    static final String EXTRA_SPEED="speech_speed";
     private static final String CHANNEL="memorizer_speech";
     private static final int NOTIFICATION_ID=187;
     private static final String TAG="PoliticsAudio";
@@ -37,6 +40,7 @@ public final class SpeechService extends Service {
     private AudioCatalog catalogue;
     private int generation=0,cardIndex=0;
     private boolean prepared=false;
+    private float speed=1.0f;
 
     @Override public void onCreate(){
         super.onCreate();
@@ -53,12 +57,17 @@ public final class SpeechService extends Service {
         if(i==null)return START_NOT_STICKY;
         String action=i.getAction();
         if(STOP.equals(action)){stopPlayback();return START_NOT_STICKY;}
+        if(SET_SPEED.equals(action)){
+            speed=clampSpeed(i.getFloatExtra(EXTRA_SPEED,speed));
+            applySpeed();updateNotification();return START_NOT_STICKY;
+        }
         if(TOGGLE.equals(action)){
             if(active){if(paused)resumePlayback();else pausePlayback();}
             return START_NOT_STICKY;
         }
         if(!PLAY.equals(action))return START_NOT_STICKY;
         generation++;releasePlayer();playlist.clear();cardIndex=0;paused=false;prepared=false;
+        speed=clampSpeed(i.getFloatExtra(EXTRA_SPEED,speed));
         // Reload after an audio-pack import while the app is already running.
         catalogue=new AudioCatalog(this);
         StudyStore store=new StudyStore(this);
@@ -100,12 +109,19 @@ public final class SpeechService extends Service {
             next.setOnPreparedListener(p->{
                 if(!active||token!=generation||index!=cardIndex||p!=player)return;
                 prepared=true;
+                applySpeed(p);
                 if(!paused)p.start();
             });
             next.setOnCompletionListener(p->handler.post(()->advance(token,index)));
             next.setOnErrorListener((p,what,extra)->{handler.post(()->advance(token,index));return true;});
             updateNotification();next.prepareAsync();
         }catch(Exception e){Log.e(TAG,"MP3 decoding error",e);advance(token,index);}
+    }
+    private static float clampSpeed(float value){return Math.max(0.75f,Math.min(2.0f,value));}
+    private void applySpeed(){if(player!=null&&prepared)applySpeed(player);}
+    private void applySpeed(MediaPlayer target){
+        try{if(android.os.Build.VERSION.SDK_INT>=23)target.setPlaybackParams(new PlaybackParams().setSpeed(speed).setPitch(1.0f));}
+        catch(Exception e){Log.w(TAG,"Playback speed update rejected",e);}
     }
     private void advance(int token,int index){
         if(!active||paused||token!=generation||index!=cardIndex)return;
@@ -140,7 +156,7 @@ public final class SpeechService extends Service {
         Intent open=new Intent(this,MainActivity.class);open.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP|Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent show=PendingIntent.getActivity(this,0,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
         b.setContentTitle(paused?"政治背诵 · 已暂停":"政治背诵 · 内置音频播放中")
-         .setContentText(label).setSmallIcon(android.R.drawable.ic_media_play).setContentIntent(show)
+         .setContentText(label+" · "+String.format(java.util.Locale.CHINA,"%.2f×",speed)).setSmallIcon(android.R.drawable.ic_media_play).setContentIntent(show)
          .setOngoing(!paused).setOnlyAlertOnce(true).setVisibility(Notification.VISIBILITY_PUBLIC)
          .addAction(paused?android.R.drawable.ic_media_play:android.R.drawable.ic_media_pause,
               paused?"继续":"暂停",serviceIntent(TOGGLE,1))

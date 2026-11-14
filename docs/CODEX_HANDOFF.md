@@ -1,46 +1,36 @@
-# Codex handoff / build & UX acceptance
+# Codex handoff / PoliticsMemory v0.8
 
-This is a handoff note for an agent in a developer environment; do not add features to the MVP.
-
-## Build
+## Build environment
 
 - Java 17, Android Gradle Plugin 8.7.3, Gradle 8.9, compile SDK 35, target SDK 34, minimum API 26.
-- On GitHub Actions: run the provided `.github/workflows/build-apk.yml`; get `politics-memory-debug-apk` artifact.
-- Local: Android SDK 35 and Gradle 8.9, `gradle --no-daemon :app:assembleDebug`.
-- There is no Gradle wrapper in the source archive; GitHub Actions installs Gradle explicitly. Do not add internet permissions or analytics.
+- The canonical full pack is `data/suyi-full.json` (five subjects, 561 groups).
+- `StudyStore.installStarterOnce()` expects the build pipeline to copy the canonical pack to `app/src/main/assets/suyi-full.json`.
+- The offline audio manifest is `app/src/main/assets/audio-index.json`; MP3s live in `app/src/main/assets/audio/`.
+- GitHub Actions `grouped-audio.yml` creates subject shards, merges them, validates text and MP3 hashes, builds the APK and deploys the web preview.
 
-## Acceptance checklist (manual on Android 11 or later)
+## Acceptance checklist
 
-1. Launch offline. Starter contains exactly 93 cards, 7 chapters. All are immediately readable.
-2. Review: LEFT swipe moves to previous card; RIGHT swipe moves to next card (note: intentionally reversed from conventional pagination). A vertical gesture scrolls an expanded long essay and must not flip cards.
-3. Leave answers hidden, swipe three cards -> still hidden. Reveal, swipe three cards -> still revealed. Tap hide -> hidden across subsequent swipes.
-4. Tap answer reveal, rate `不会`, `模糊`, `会了`. Confirm rating saves immediately and automatically advances. No rating occurs on swipe or reveal.
-5. On the same date, repeatedly rate `会了` on the same card: familiarity must not progress beyond 2. On distinct dates, two successful reviews -> score 3, three -> score 4. `不会` resets to 0, `模糊` reduces 1 (min 1).
-6. Force close/reopen: materials, ratings, familiarity, due dates remain intact. Airplane mode: all screens function.
-7. Browse 3-level subject/chapter/topic progress. Coverage uses rated/total; mastery uses verified score >=3 and latest yes; average uses 0–4 score, not page position.
-8. Export JSON via Android document picker to `Documents/`. Copy via USB. Use `scripts/inspect_backup.py`. CSV export opens in spreadsheet software.
-9. Import the same sample JSON twice: no duplicates, no reset. Edit one card `answer` with incremented revision: review log preserved, changed card marked `待复核` until next rating. Restore an older backup: newer local reviews not overwritten.
-10. Search a word/question/topic. Open the matching result and swipe within the results. Import 2nd subject package and verify independent progress.
+1. Install the debug APK offline. It must initialize all 561 groups and show only three bottom tabs: 复习、资料、统计.
+2. Confirm the legacy 93 short-card pack is not mixed into the active catalogue. Its stored data must remain available in a full JSON backup.
+3. Review page order: three-level location, group title, recall question, separator, full answer, optional tiny red note at the end.
+4. LEFT swipe moves to previous group; RIGHT swipe moves to next group. Horizontal gestures animate and snap; vertical gestures scroll long answers without changing groups.
+5. Reveal/hide persists across swipes. Rating uses 忘记／模糊／记住, saves immediately, and advances. Swipe/reveal alone never changes review score.
+6. Select each speech rate 0.75×, 1.0×, 1.25×, 1.5×, 1.75× and 2.0×. Confirm rate changes current and subsequent playback and survives app restart.
+7. Audio manifest covers exactly 561 IDs. Before playback, Android and web must verify the same canonical spoken text hash: path, title, question, answer and optional note. Any mismatch must be skipped/blocked.
+8. Audio continues while screen is off; notification can pause, resume and stop. Test on a real Android device, not only emulator.
+9. Mark a card as 做题错题. It must appear under 错题 without being conflated with 忘记／模糊. Removing the mark must remove it from that collection.
+10. 时政 appears as an empty placeholder until user-provided material is imported. Never prefill current affairs from an unverified source.
+11. Export/import full JSON. Preserve ratings, wrong IDs, review events, speed preference, group title and notes. Older restore data must not overwrite newer local review timestamps.
+12. Web preview: all five subjects, 561 groups, localStorage persistence, backup export/import, swipe animation, speed selector and audio hash verification. Browser data must not be sent to any server.
+13. Verify CI APK artifact and GitHub Pages deployment separately. CI compilation and emulator screenshots do not establish real-device fluidity or background audio reliability.
 
-## Perf acceptance
+## Performance
 
-- A11 low/mid-range device: drag must follow touch with no full-screen refresh; keep scrolling fluid. If 5000+ cards make loading slow, optimize SQLite reads and visible-row rendering *before* adding any new feature.
-- Recheck memory and size in actual compiled APK. Do not claim a measured APK size without the build artifact.
+Keep the interface compact and native. Avoid rebuilding the entire page during a drag; `SwipePagerLayout` should animate the current and incoming page. If 5,000+ groups are ever imported, optimize SQLite reads and visible-row rendering before adding features.
 
 ## Known scope boundaries
 
-- Debug builds are not signed with an app-store production key. For long-term installation and updates, create and securely store one stable release keystore **outside** GitHub and outside this repository; use the same applicationId and signing key for upgrades. Never commit a private keystore.
-- There is no automated PC-side synchronization. The phone exports a Codex-readable JSON/CSV file; copy via USB. No background network.
-- Starter contains paraphrased compact K facts, not the user's F2 full mother templates. Import additional courses as separate packs and keep stable IDs.
-- OCR/course-derived political materials may have transcription errors; verify fixed wordings against user-owned authoritative book. Do not infer exam frequency or automatically delete topics from absence in a course.
-- Prioritize real-APK compilation and swipe behavior over new features. User requested a small, fast, minimal app.
-
-
-## v0.2 additions and validation priorities
-
-- MainActivity now implements expandable 科目/章节/考点 headings with playback controls; tap a content leaf to enter original study pager.
-- SpeechService uses offline Android TextToSpeech and a media-playback foreground service for lock-screen continuation. Test on the actual device with a previously installed Chinese offline voice. No INTERNET permission.
-- The starter pack is now version 2 and maps 93 original item IDs into 36 nonempty Su Yi-style topic headings. `StudyStore.installStarterOnce()` checks the pack revision and performs metadata-only upgrade without invalidating review history.
-- Manual test: open subject, open chapter, open topic, start chapter playback, screen off for several minutes, listen until next topic; pause/continue from notification. Test home session playback, phone restart, import duplicate and edited JSON, and backup restoration.
-- A stable private signing key is required for upgrade-safe long-term APK releases. CI debug certificates differ between builds; never uninstall an installed copy without first exporting a JSON backup.
-- If the Android emulator screenshot job fails due to AVD dependencies, CI compilation and screenshot verification should be reported separately.
+- No INTERNET permission, analytics SDK, ads, WebView, login or cloud progress sync.
+- Web and Android progress are independent; transfer only through user-initiated JSON backup.
+- Debug builds are not a production signing strategy. Any future stable release key must stay outside the repository and CI logs.
+- OCR/course-derived content can still contain transcription errors. Do not claim full verbatim proofreading solely from 100% structural coverage.

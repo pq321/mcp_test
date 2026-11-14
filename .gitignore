@@ -12,3 +12,7 @@ local.properties
 app/src/main/assets/audio/
 app/src/main/assets/audio-index.json
 .voice-cache/
+site/
+audio-shards/
+preview/audio/
+app/src/main/assets/suyi-full.json

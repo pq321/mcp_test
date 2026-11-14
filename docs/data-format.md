@@ -1,106 +1,61 @@
 # Political study pack JSON v1
 
-This schema is intentionally simple and does not depend on a server, Markdown renderer, or external accounts.
+The pack is UTF-8 JSON and does not depend on a server, Markdown renderer or external account.
 
 ## Study materials
-
-UTF-8 `.json` with top-level object:
 
 ```json
 {
   "schema_version": 1,
-  "pack_id": "politics-sixiu-k",
-  "pack_revision": 2,
-  "title": "思修重点K",
+  "pack_id": "politics-suyi-full",
+  "pack_revision": 7,
+  "title": "苏一全科成组背诵",
   "cards": [
     {
-      "id": "sixiu-law-system-004",
-      "revision": 2,
-      "path": ["思修", "07 法律", "考点6 法治体系"],
-      "type": "keypoint",
-      "question": "建设中国特色社会主义法治体系的重点是什么？",
-      "answer": "高效的法治实施体系。",
-      "source": "苏一思维导图第132页",
-      "order": 4
+      "id": "suyi-001-example",
+      "revision": 1,
+      "path": ["马原", "第一章", "考点一"],
+      "type": "group",
+      "title": "知识点名称",
+      "question": "需要回忆的问题？",
+      "answer": "完整成组答案。",
+      "notes": "腿姐背诵技巧",
+      "source": "苏一正文印刷第1页",
+      "content_status": "STRUCTURED_TEXT_REORGANIZED",
+      "order": 1
     }
   ]
 }
 ```
 
-- `path` **must** have exactly 3 nonempty strings: **subject, chapter, topic**. Each is a heading; the card is the question-answer item at the topic level.
-- `type` is `keypoint` or `essay`. Essays use the same ID and fields; answers may have paragraphs separated by `\n`.
-- `pack_id` identifies a package (letters, numbers, `_`, `-`, `.`, 1–80 chars).
-- `pack_revision` is a monotonically nondecreasing package revision. Older packages are rejected.
-- Each `id` is globally stable across all imports and packages (letters, numbers, `_`, `-`, `.`, max 128). **Never reuse an ID for a different fact**. It is the join key between content and study records.
-- Each card `revision` starts from 1, increases when its factual text changes, and is never reduced by an import.
-- `order` is an integer used to sort within a topic. All other ordering is fixed by the lexical chapter labels (`01 ...`, `02 ...`).
-- Imports **never delete** existing cards. Reimporting the exact same file is idempotent.
-- Material changes (question/answer/path/type/source/order) retain old review history, but require a new review (`needs_review=true`), so a changed answer cannot silently retain its old mastered status.
-- All imports are parsed and validated before database modification and then applied in one SQLite transaction.
-- Maximum file size is 20 MiB; split larger content by subject or chapter. Max 20,000 cards per pack.
+- `path` has exactly three nonempty strings: subject, chapter and topic.
+- `title` is the display name of the whole group. If omitted, the app falls back to `path[2]`.
+- `question` is the recall prompt shown between the title and separator.
+- `answer` is the complete grouped knowledge content; preserve internal line breaks.
+- `notes` is optional, rendered in tiny red text at the end. Only include attributed teacher tips when the source supports the attribution.
+- `type` accepts `group`, `keypoint` or `essay`. The Su Yi full pack uses `group`.
+- `source` and `content_status` describe provenance and processing state. Do not interpret a status of `STRUCTURED_TEXT_REORGANIZED` as verbatim proofreading.
+- `pack_id` identifies a package. `pack_revision` is monotonically nondecreasing.
+- Each `id` is globally stable across imports. Never reuse an ID for a different fact. Each card `revision` increases when factual text changes.
+- `order` sorts cards within their topic. Imports never delete existing cards; reimport is idempotent.
+- Changes to question or answer preserve review history but mark the card for review. Changes to title, path, note or source are metadata-only.
 
-## App-created backup
+## Audio contract
 
-Export a single JSON file via the Android system document picker. The backup root is:
+Each card receives one generated MP3. The audio says, in order: knowledge-point location, group title, recall question, full answer and optional note. The text checksum is SHA-256 of the exact canonical text joined with newline characters:
 
-```json
-{
-  "kind": "politics-memory-backup",
-  "schema_version": 1,
-  "exported_at": 1794600000000,
-  "packs": [ { "schema_version": 1, "pack_id": "...", "pack_revision": 1, "title": "...", "cards": [] } ],
-  "reviews": [ {
-    "card_id": "sixiu-law-system-004",
-    "score": 3,
-    "review_count": 2,
-    "due_at": 1794859200000,
-    "last_review_at": 1794600000000,
-    "last_rating": "yes",
-    "last_yes_day": "20261113",
-    "needs_review": false
-  } ],
-  "events": [ { "id": "uuid", "card_id": "...", "rating": "yes", "score_before": 2, "score_after": 3, "at": 1794600000000 } ]
-}
+```text
+知识点位置。科目，章节，考点
+知识点名称。标题
+问题。问题正文
+答案。完整答案
+备注。可选备注
 ```
 
-Time fields are Unix milliseconds. `last_yes_day` is the phone's **local calendar date** (`yyyyMMdd`). The whole backup is intentionally plain JSON so **Codex can read it with no special database driver**. You can also export a UTF-8-with-BOM CSV progress report, which is compatible with Excel/VS Code.
+The `audio-index.json` item stores `file`, `text_sha256`, `audio_sha256` and `size_bytes`. Android and web verify the text hash before playback. A changed title, question, answer or note invalidates the old recording; mismatched audio is never played.
 
-When importing a new pack revision, heading/path/source/order changes are metadata-only and **do not** reset mastery. Changes to question, answer, or card type flag the existing rating as `needs_review`; stable IDs retain history.
+## Backup and progress
 
-For the Su Yi mind-map hierarchy, keep the three `path` strings in the order `["思修", "06 第六章 法治素养", "考点6 建设法治中国"]`. One topic can contain several independently rated facts; every level expands in the app. To retain the original full Su Yi topics, see the source reading material; the starter pack deliberately contains only selected high-value facts, not all text.
+Android JSON backup contains all packs, review records, event history, `wrong_ids` and local settings. The old 93-card starter pack remains in backups but is hidden from the active 561-group catalogue. Web progress is browser-local and exported as JSON; it is not automatically synchronized with Android.
 
-**Speech:** Play on any subject/chapter/topic begins at its first item, then automatically continues through later items in the installed study order. Home-mode speech only plays the current review session from its current position. Uses **pre-generated MP3 clips embedded in the APK**; no runtime TTS or voice model on the phone. Media notification continues screen-off and can pause/resume/stop, including position-accurate resume. Missing clips are skipped, never silently synthesized. Playback never changes review ratings.
-
-When restoring a backup, newer local rating timestamps win. The event log is deduplicated by event UUID. Restore is transactional; it never deletes cards. A content-change flag is preserved while restoring older practice records.
-
-## Familiarity algorithm
-
-- Unseen: `review_count=0` (score 0, *未学*).
-- **不会 (`no`)**: score **0**; due in 10 minutes.
-- **模糊 (`fuzzy`)**: score `max(1,score-1)`; due after one local day.
-- **会了 (`yes`)**: score is at least 2 on the first successful review; another `yes` on a different calendar date raises score by 1 to a maximum of 4. Repeated `yes` on the same date does not increase the score.
-- Score **2**: familiar, due next day; **3**: mastered, due in 3 days; **4**: stable, due in 7 days.
-- *Mastered* means `score >= 3`, latest rating is `yes`, and `needs_review` is false. Merely opening an answer or swiping a page does **not** change familiarity.
-- Chapter/topic/subject coverage = rated cards / total; mastered rate = mastered cards / total; average familiarity = sum(score)/total, on a 0–4 scale.
-- `fuzzy` or `no` breaks the latest-mastered marker even if historical successes remain in `events`.
-
-## Offline-only data policy
-
-AndroidManifest intentionally does not request `android.permission.INTERNET` and disables system automatic backup. Data never leaves the phone until the user explicitly exports using Android's document picker. The app never uses a cloud account, advertising, analytics SDK or WebView.
-
-## Usage examples
-
-```bash
-python3 scripts/validate_pack.py data/starter-sixiu-k.json
-python3 scripts/inspect_backup.py '政治背诵-完整备份-20261114-0004.json'
-```
-
-## Extra offline audio packages (ZIP)
-
-The regular JSON import remains unchanged. To add **pre-generated audio without reinstalling APK**, import a ZIP file through the same system picker:
-
-- `pack.json`: normal version-1 materials pack.
-- `audio-index.json`: `{ "schema_version": 1, "pack_id": "...", "items": { "id": { "file": "audio/id.mp3", "text_sha256": "sha256(question+newline+answer)", "audio_sha256": "sha256(mp3 bytes)" } } }`.
-- `audio/<id>.mp3`: one short mono MP3 per card.
-
-Run `python scripts/generate_audio.py --pack source.json --model model.onnx --out staging --zip source-audio.zip`. The app validates ZIP paths, duplicates, sizes, IDs and both hashes before installing audio; stable card IDs retain mastery. When a card's text changes, the previously saved audio no longer matches and will not be played. A JSON-only import never pretends to have offline audio.
+Familiarity remains 0–4. 忘记 resets to 0; 模糊 reduces one level (minimum 1); 记住 progresses across different calendar dates. Merely opening an answer or swiping does not affect score. 做题错题 is an independent manual mark, not inferred from a poor recall rating.
