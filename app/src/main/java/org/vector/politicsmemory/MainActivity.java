@@ -73,7 +73,7 @@ public final class MainActivity extends Activity {
             catch(Exception e){runOnUiThread(()->error("内置素材初始化失败："+e.getMessage()));}
         }).start();
     }
-    @Override protected void onDestroy(){store.close();super.onDestroy();}
+    @Override protected void onDestroy(){playerHandler.removeCallbacks(playerTicker);store.close();super.onDestroy();}
     private int parseGoal(String v){try{int k=Integer.parseInt(v);return Math.max(5,Math.min(100,k));}catch(Exception e){return 25;}}
     private int dp(float value){return Math.round(getResources().getDisplayMetrics().density*value);}
     private GradientDrawable bg(int color,float radius){
