@@ -36,7 +36,7 @@ jobs:
           target: google_apis
           profile: pixel_2
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: true
+          disable-animations: false
           script: |
             gradle --no-daemon :app:assembleDebug
             adb install -r app/build/outputs/apk/debug/app-debug.apk
@@ -49,8 +49,16 @@ jobs:
             adb pull /sdcard/catalogue.png screenshots/catalogue.png
             adb shell input tap 46 833
             sleep 2
-            adb shell screencap -p /sdcard/review.png
-            adb pull /sdcard/review.png screenshots/review.png
+            adb shell screencap -p /sdcard/review-hidden.png
+            adb pull /sdcard/review-hidden.png screenshots/review-hidden.png
+            adb shell input tap 210 430
+            sleep 1
+            adb shell screencap -p /sdcard/review-revealed.png
+            adb pull /sdcard/review-revealed.png screenshots/review-revealed.png
+            adb shell input swipe 100 430 340 430 300
+            sleep 1
+            adb shell screencap -p /sdcard/review-next.png
+            adb pull /sdcard/review-next.png screenshots/review-next.png
       - uses: actions/upload-artifact@v4
         if: always()
         with:
