@@ -4,7 +4,9 @@ on:
   push:
     branches: [main]
     paths:
+      - '.github/workflows/minimal-release.yml'
       - 'source/minimal-v09-*.b64'
+      - 'scripts/v09_acceptance_followup.py'
       - 'app/**'
       - 'preview/**'
       - 'qa/**'
@@ -34,6 +36,7 @@ jobs:
               assert hashlib.sha256(patch).hexdigest()=='7d1f67fb33c0e4d2091d7cf2c70b2e57b71d12c3808e0e07beae231108ffa033','Source transfer checksum mismatch'
               subprocess.run(['git','apply','--check','-'],input=patch,check=True)
               subprocess.run(['git','apply','-'],input=patch,check=True)
+              subprocess.run(['python','scripts/v09_acceptance_followup.py'],check=True)
           PY
       - name: Reuse all verified recordings and build complete web product
         run: |
@@ -92,7 +95,6 @@ jobs:
           python - <<'PY'
           import json,hashlib,os
           from pathlib import Path
-          root=Path('.')
           files=['app/build/outputs/apk/debug/app-debug.apk','web-preview/index.html','preview/app.js','preview/app.css','data/suyi-full.json']
           report={'version':'0.9.0','run_id':os.environ['GITHUB_RUN_ID'],'source_base':os.environ['GITHUB_SHA'],'audio_groups':561,'web':json.loads(Path('evidence/web-smoke.json').read_text()),'android':json.loads(Path('evidence/android-smoke.json').read_text()),'sha256':{p:hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in files}}
           Path('docs/V09_ACCEPTANCE.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
