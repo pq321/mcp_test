@@ -145,12 +145,12 @@ public final class MainActivity extends Activity {
         }).show();
     }
     private float speechSpeed(){
-        try{return Math.max(0.75f,Math.min(2f,Float.parseFloat(store.setting("speech_speed","1.0"))));}
+        try{return Math.max(0.75f,Math.min(4f,Float.parseFloat(store.setting("speech_speed","1.0"))));}
         catch(Exception e){return 1f;}
     }
     private void changeSpeechSpeed(){
-        final float[] values={0.75f,1f,1.25f,1.5f,1.75f,2f};
-        String[] labels={"0.75×","1.0×","1.25×","1.5×","1.75×","2.0×"};
+        final float[] values={0.75f,1f,1.25f,1.5f,1.75f,2f,2.5f,3f,3.5f,4f};
+        String[] labels={"0.75×","1.0×","1.25×","1.5×","1.75×","2.0×","2.5×","3.0×","3.5×","4.0×"};
         int selected=1;for(int i=0;i<values.length;i++)if(Math.abs(values[i]-speechSpeed())<0.001f)selected=i;
         new AlertDialog.Builder(this).setTitle("朗读倍速").setSingleChoiceItems(labels,selected,(dialog,which)->{
             float speed=values[which];store.saveSetting("speech_speed",Float.toString(speed));
