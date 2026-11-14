@@ -137,7 +137,7 @@ public final class MainActivity extends Activity {
         return bar;
     }
     private void showFileMenu(){
-        String[] items={"导入素材或备份（JSON）","导出完整备份（JSON）","导出学习记录（CSV）","查看数据格式说明"};
+        String[] items={"导入素材、音频包或备份（JSON/ZIP）","导出完整备份（JSON）","导出学习记录（CSV）","查看数据格式说明"};
         new AlertDialog.Builder(this).setTitle("本地资料管理").setItems(items,(d,which)->{
             if(which==0)chooseImport();else if(which==1)chooseExport(false);
             else if(which==2)chooseExport(true);else showFormatHelp();
@@ -172,8 +172,8 @@ public final class MainActivity extends Activity {
         try{
             if(android.os.Build.VERSION.SDK_INT>=26)startForegroundService(i);
             else startService(i);
-            Toast.makeText(this,"已启动离线连续朗读 · 通知栏可暂停或停止",Toast.LENGTH_SHORT).show();
-        }catch(Exception e){error("无法启动朗读，请检查系统语音引擎和设置："+e.getMessage());}
+            Toast.makeText(this,"开始播放预制音频 · 通知栏可暂停或停止",Toast.LENGTH_SHORT).show();
+        }catch(Exception e){error("无法启动音频播放："+e.getMessage());}
     }
     private void stopSpeech(){
         Intent i=new Intent(this,SpeechService.class);i.setAction(SpeechService.STOP);
@@ -490,7 +490,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll=new ScrollView(this);content.addView(scroll);LinearLayout body=column();padding(body,17,0,17,20);scroll.addView(body);
         body.addView(titleBar("我的 · 本地设置",false));spacer(body,15);
         body.addView(text("完全离线 · 不需要登录 · 不声明网络权限",14,TEAL,true));spacer(body,20);
-        addSettingButton(body,"导入素材或备份","从手机选择JSON；重复导入不重复建卡",this::chooseImport);
+        addSettingButton(body,"导入素材或备份","选择JSON资料，或包含MP3的离线ZIP素材包",this::chooseImport);
         addSettingButton(body,"导出完整备份","JSON含素材、熟悉度、复习日志；Codex可以直接读取",()->chooseExport(false));
         addSettingButton(body,"导出学习记录","CSV包含知识点、掌握状态和复习时间",()->chooseExport(true));
         addSettingButton(body,"每日目标："+dailyGoal+"条","仅影响每日复习队列数量；资料目录不受影响",this::changeGoal);
@@ -523,7 +523,8 @@ public final class MainActivity extends Activity {
                 .setPositiveButton("知道了",null).show();
     }
     private void chooseImport(){
-        Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("application/json");
+        Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("*/*");
+        i.putExtra(Intent.EXTRA_MIME_TYPES,new String[]{"application/json","application/zip","application/x-zip-compressed","application/octet-stream"});
         i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);startActivityForResult(i,IMPORT);
     }
     private void chooseExport(boolean csv){
@@ -541,8 +542,16 @@ public final class MainActivity extends Activity {
             new Thread(()->{
                 try(InputStream in=getContentResolver().openInputStream(uri)){
                     if(in==null)throw new IOException("无法读取文件");
-                    JSONObject obj=new JSONObject(StudyStore.readText(in,20*1024*1024));
-                    StudyStore.ImportResult outcome=store.importPayload(obj);
+                    String name="";
+                    android.database.Cursor meta=getContentResolver().query(uri,new String[]{android.provider.OpenableColumns.DISPLAY_NAME},null,null,null);
+                    if(meta!=null){try{if(meta.moveToFirst())name=meta.getString(0);}finally{meta.close();}}
+                    StudyStore.ImportResult outcome;
+                    if(name.toLowerCase(java.util.Locale.ROOT).endsWith(".zip")){
+                        outcome=AudioZipImporter.importPack(this,in,store);
+                    }else{
+                        JSONObject obj=new JSONObject(StudyStore.readText(in,20*1024*1024));
+                        outcome=store.importPayload(obj);
+                    }
                     runOnUiThread(()->{catalogueFilter="";dailyGoal=parseGoal(store.setting("daily_goal","25"));showAnswer="true".equals(store.setting("show_answer","false"));switchTab(1);inform("导入完成："+outcome);});
                 }catch(Exception e){runOnUiThread(()->error("导入失败（未写入半份资料）："+e.getMessage()));}
             }).start();

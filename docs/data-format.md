@@ -69,7 +69,7 @@ When importing a new pack revision, heading/path/source/order changes are metada
 
 For the Su Yi mind-map hierarchy, keep the three `path` strings in the order `["思修", "06 第六章 法治素养", "考点6 建设法治中国"]`. One topic can contain several independently rated facts; every level expands in the app. To retain the original full Su Yi topics, see the source reading material; the starter pack deliberately contains only selected high-value facts, not all text.
 
-**Speech:** Play on any subject/chapter/topic begins at its first item, then automatically continues through later items in the installed study order. Home-mode speech only plays the current review session from its current position. Uses Android local Chinese TextToSpeech (TTS), not prerecorded audio and never a network voice. Media notification continues screen-off and can pause/resume/stop; resume restarts the current item. Playback never changes review ratings.
+**Speech:** Play on any subject/chapter/topic begins at its first item, then automatically continues through later items in the installed study order. Home-mode speech only plays the current review session from its current position. Uses **pre-generated MP3 clips embedded in the APK**; no runtime TTS or voice model on the phone. Media notification continues screen-off and can pause/resume/stop, including position-accurate resume. Missing clips are skipped, never silently synthesized. Playback never changes review ratings.
 
 When restoring a backup, newer local rating timestamps win. The event log is deduplicated by event UUID. Restore is transactional; it never deletes cards. A content-change flag is preserved while restoring older practice records.
 
@@ -94,3 +94,13 @@ AndroidManifest intentionally does not request `android.permission.INTERNET` and
 python3 scripts/validate_pack.py data/starter-sixiu-k.json
 python3 scripts/inspect_backup.py '政治背诵-完整备份-20261114-0004.json'
 ```
+
+## Extra offline audio packages (ZIP)
+
+The regular JSON import remains unchanged. To add **pre-generated audio without reinstalling APK**, import a ZIP file through the same system picker:
+
+- `pack.json`: normal version-1 materials pack.
+- `audio-index.json`: `{ "schema_version": 1, "pack_id": "...", "items": { "id": { "file": "audio/id.mp3", "text_sha256": "sha256(question+newline+answer)", "audio_sha256": "sha256(mp3 bytes)" } } }`.
+- `audio/<id>.mp3`: one short mono MP3 per card.
+
+Run `python scripts/generate_audio.py --pack source.json --model model.onnx --out staging --zip source-audio.zip`. The app validates ZIP paths, duplicates, sizes, IDs and both hashes before installing audio; stable card IDs retain mastery. When a card's text changes, the previously saved audio no longer matches and will not be played. A JSON-only import never pretends to have offline audio.

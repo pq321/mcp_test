@@ -8,3 +8,7 @@ local.properties
 *.keystore
 *.jks
 .DS_Store
+# Generated offline speech clips. App bundle is assembled in CI.
+app/src/main/assets/audio/
+app/src/main/assets/audio-index.json
+.voice-cache/

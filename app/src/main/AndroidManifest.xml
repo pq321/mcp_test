@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- No INTERNET permission: speech uses only locally installed TTS voices. -->
+    <!-- No INTERNET permission: speech plays bundled MP3, with no TTS dependency. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <application android:allowBackup="false" android:fullBackupContent="false"

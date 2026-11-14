@@ -14,6 +14,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
@@ -21,9 +24,28 @@ jobs:
         run: |
           SDK_MANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
           test -n "$SDK_MANAGER"
-          "$SDK_MANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
+          "$SDK_MANAGER" --install 'platforms;android-35' 'build-tools;35.0.0' 
       - name: Validate sample content
         run: python3 scripts/validate_pack.py app/src/main/assets/starter-sixiu-k.json
+      - name: Install voice synthesizer (build-time only)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'piper-tts[zh]==1.8.0'
+          command -v ffmpeg
+      - name: Download CC0 Mandarin voice to CI only
+        run: |
+          mkdir -p .voice-cache
+          BASE='https://huggingface.co/rhasspy/piper-voices/resolve/main/zh/zh_CN/chaowen/medium/zh_CN-chaowen-medium.onnx'
+          curl -fL --retry 4 --connect-timeout 15 "$BASE" -o .voice-cache/zh_CN-chaowen-medium.onnx
+          curl -fL --retry 4 --connect-timeout 15 "$BASE.json" -o .voice-cache/zh_CN-chaowen-medium.onnx.json
+          test "$(stat -c%s .voice-cache/zh_CN-chaowen-medium.onnx)" -gt 10000000
+      - name: Generate all prerecorded Mandarin MP3 clips
+        run: |
+          python scripts/generate_audio.py \
+            --pack app/src/main/assets/starter-sixiu-k.json \
+            --model .voice-cache/zh_CN-chaowen-medium.onnx \
+            --out app/src/main/assets
+          python scripts/validate_audio.py app/src/main/assets/starter-sixiu-k.json app/src/main/assets
       - name: Assemble debug APK
         run: gradle --no-daemon --stacktrace :app:assembleDebug
       - uses: actions/upload-artifact@v4
