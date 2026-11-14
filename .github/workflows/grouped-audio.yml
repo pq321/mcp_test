@@ -1,0 +1,63 @@
+name: Generate grouped offline audio
+on:
+  push:
+    paths: ['.github/workflows/grouped-audio.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Prepare one subject without changing its content
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python - <<'PY'
+          import json,os,pathlib
+          i=int(os.environ['SHARD'])
+          path='data/suyi-full.json' if i<5 else 'data/starter-sixiu-k.json'
+          p=json.loads(pathlib.Path(path).read_text())
+          if i<5:p['cards']=[c for c in p['cards'] if c['path'][0]==['马原','毛中特','新思想','史纲','思修'][i]]
+          assert p['cards']
+          pathlib.Path('subject.json').write_text(json.dumps(p,ensure_ascii=False))
+          print(i,len(p['cards']))
+          PY
+      - name: Install build-time voice tools
+        run: |
+          python -m pip install 'piper-tts[zh]==1.8.0'
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+      - uses: actions/cache@v4
+        with:
+          path: .voice-cache
+          key: piper-chaowen-medium-v1
+      - name: Obtain synthesis model on build host only
+        run: |
+          mkdir -p .voice-cache
+          BASE='https://huggingface.co/rhasspy/piper-voices/resolve/main/zh/zh_CN/chaowen/medium/zh_CN-chaowen-medium.onnx'
+          test -s .voice-cache/zh_CN-chaowen-medium.onnx || curl -fL --retry 4 "$BASE" -o .voice-cache/zh_CN-chaowen-medium.onnx
+          test -s .voice-cache/zh_CN-chaowen-medium.onnx.json || curl -fL --retry 4 "$BASE.json" -o .voice-cache/zh_CN-chaowen-medium.onnx.json
+      - name: Render and validate every assigned full answer
+        env:
+          OMP_NUM_THREADS: '2'
+        run: |
+          python scripts/generate_audio.py --pack subject.json --model .voice-cache/zh_CN-chaowen-medium.onnx --out generated
+          python scripts/validate_audio.py subject.json generated
+          cp subject.json generated/pack.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grouped-audio-${{ matrix.shard }}
+          path: generated/
+          compression-level: 0
+          retention-days: 30
+          if-no-files-found: error
