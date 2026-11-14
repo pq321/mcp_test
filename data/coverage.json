@@ -1820,11 +1820,11 @@
     "unmapped_leaf_nodes": 0,
     "page_coverage": "135/135"
   },
-  "audio_boundary": "五科561组离线MP3已在CI生成并通过音频文件SHA-256与正文SHA-256双重校验；最新源码构建正在重新生成并打包全部561组。",
+  "audio_boundary": "最新源码CI构建已生成全部561组普通话MP3；五个分片分别校验通过，合并后再次完成561/561音频文件SHA-256与正文SHA-256双重校验。",
   "audio_generation": {
-    "status": "VERIFIED_ON_PREVIOUS_BUILD_AND_REBUILDING_LATEST",
+    "status": "VERIFIED_LATEST_BUILD",
     "groups": 561,
-    "verified_run_id": 43571418404,
-    "latest_rebuild_run_id": 43573492139
+    "shards": 5,
+    "verified_run_id": 43573492139
   }
 }
