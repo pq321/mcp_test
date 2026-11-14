@@ -64,7 +64,7 @@ def main():
     (out / 'index.html').write_text(html, encoding='utf-8')
     (out / 'audio-index.json').write_text(json.dumps(index, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     (out / 'README.txt').write_text(
-        'PoliticsMemory v0.10 desktop preview\n'
+        'PoliticsMemory v0.10.1 desktop preview\n'
         'Open index.html in a modern browser. Keep the audio/ folder beside it for offline speech.\n'
         'One-time pairing: launch the included desktop sync receiver; paste the connection code on the phone. Then tap Sync to send progress directly to this computer. Both devices must reach the receiver (normally the same trusted Wi-Fi).\n',
         encoding='utf-8')

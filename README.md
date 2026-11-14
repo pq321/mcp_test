@@ -1,3 +1,9 @@
+# 当前版本 0.10.1 · 滑动方向已对调
+
+本次只反转0.10.0的手指滑动行为。最新说明：`docs/GESTURE_V0101.md`；验收：`docs/V0101_ACCEPTANCE.json`；完整网页：`web-preview/index.html`；安装包：Release `v0.10.1-gesture`。以下旧版方向说明不再适用。
+
+---
+
 # PoliticsMemory 0.10 · 一键同步、精简朗读
 
 当前版本：0.10.0。完整网页与561条标题+正文录音已提交 `web-preview/`；APK与含Windows同步接收器的网页完整包在 Release `v0.10.0-sync`。操作说明见 `docs/SYNC_V010.md`，真实验收见 `docs/V010_ACCEPTANCE.json`。

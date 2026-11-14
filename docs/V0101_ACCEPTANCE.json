@@ -1,0 +1,50 @@
+{
+  "version": "0.10.1",
+  "run_id": "43600692240",
+  "source_base": "75613ebf05b768ab27ccf3b66ec70aa768408ace",
+  "change": "inverse of v0.10.0 physical finger gestures only",
+  "web_example": {
+    "x_start": 285,
+    "x_end": 75,
+    "before": 1,
+    "after": 2
+  },
+  "android_example": {
+    "x_start": 850,
+    "x_end": 200,
+    "before": 1,
+    "after": 2
+  },
+  "web": {
+    "finger_left_next_right_previous_first_last_and_rating_wrap": "PASS",
+    "real_ended_autonext_and_review_follow": "PASS",
+    "audio_last_to_first_loop": "PASS",
+    "individual_play_continues_to_next": "PASS",
+    "one_tap_phone_to_computer_real_http_and_auto_refresh": "PASS",
+    "reopen_preserves_progress": "PASS",
+    "compact_fonts_and_responsive_layout": "PASS",
+    "offline_file_audio_autonext": "PASS",
+    "card_count": 561,
+    "browser_errors": []
+  },
+  "android": {
+    "finger_left_next_right_previous_first_last_loop": "PASS",
+    "real_4x_pause_seek_and_automatic_next": "PASS",
+    "audio_next_updates_review_without_rating": "PASS",
+    "android_one_tap_authenticated_upload_to_computer": "PASS",
+    "sync_confirmation_requires_durable_receipt": "PASS",
+    "offline_receiver_does_not_show_success": "PASS",
+    "player_survives_tab_switch": "PASS",
+    "display": "1080x2340, emulator density 480 and 440; not physical OPPO K5"
+  },
+  "sha256": {
+    "app/build/outputs/apk/debug/app-debug.apk": "a343453a7fa5a22664184e4a2c96ddc916158f2a594eb4fecb782bad95fcf370",
+    "web-preview/index.html": "4110dc5f8be0ee2e879e0103c655a52289bfd417ff35a77e6469858c88f1cee7",
+    "preview/app.js": "f158b7c6cab2d10d6ed595eab7ea4bcb0ad1acf7030f4093b61d8c9e52a1a0c9",
+    "app/src/main/java/org/vector/politicsmemory/SwipePagerLayout.java": "125268ac65d815f7ef0a30752e2b01651c2a5d56b6c8ca6989e5fa6e27a1e970",
+    "data/suyi-full.json": "20b2236109e35b69244b7826da3e239a67b4f735e54f84977b5a6af0fa73d9e4",
+    "web-preview/audio-index.json": "cea8bdb6bb78cf6ecf86684922ff4a7b8ed1dc92ebd5ced823022fa12a863874",
+    "preview/app.css": "2000bf4664740f4929cb4c3248f37c6956c4d2f9e6f6148c52b615099cd3a7f5"
+  },
+  "unchanged_content_audio_fonts_receiver": "PASS"
+}

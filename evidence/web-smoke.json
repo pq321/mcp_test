@@ -1,5 +1,5 @@
 {
-  "right_next_left_previous_first_last_and_rating_wrap": "PASS",
+  "finger_left_next_right_previous_first_last_and_rating_wrap": "PASS",
   "real_ended_autonext_and_review_follow": "PASS",
   "audio_last_to_first_loop": "PASS",
   "individual_play_continues_to_next": "PASS",

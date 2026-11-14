@@ -10,7 +10,7 @@ import android.widget.FrameLayout;
 
 /**
  * Full-width drag-follow pager without third-party UI dependencies.
- * User's exact mapping: swipe LEFT -> previous; swipe RIGHT -> next.
+ * User's exact mapping: finger moves LEFT -> next; finger moves RIGHT -> previous.
  * Y-direction scrolls go to the nested ScrollView.
  */
 final class SwipePagerLayout extends FrameLayout {
@@ -86,8 +86,8 @@ final class SwipePagerLayout extends FrameLayout {
     }
     private void move(float dx){
         int width=Math.max(1,getWidth());
-        int dir=dx>=0?1:-1; // +1 right gesture -> next; -1 left gesture -> previous
-        int target=(index+dir+count)%count;
+        int dir=dx>=0?1:-1; // Physical movement sign, kept independent from the page index
+        int target=(index-dir+count)%count;
         if(count<=1){
             if(neighbor!=null){removeView(neighbor);neighbor=null;neighborIndex=-1;}
             current.setTranslationX(dx*0.15f);return;
@@ -126,7 +126,7 @@ final class SwipePagerLayout extends FrameLayout {
     void advanceAfterRating(){
         if(animating||dragging||count<2)return;
         int next=(index+1)%count;
-        ensureNeighbor(next,1,Math.max(1,getWidth()));
-        completeSwipe(1);
+        ensureNeighbor(next,-1,Math.max(1,getWidth()));
+        completeSwipe(-1);
     }
 }

@@ -29,11 +29,11 @@ def wait_media(check):
 ids=[c['id'] for c in json.loads((root/'data/suyi-full.json').read_text())['cards']]
 shell('wm','size','1080x2340');shell('wm','density','480');shell('am','start','-n',pkg+'/.MainActivity');time.sleep(4)
 tap('复习');match('1 / 561')
-shell('input','swipe','200','1100','850','1100','280');time.sleep(.6);match('2 / 561')
-shell('input','swipe','850','1100','200','1100','280');time.sleep(.6);match('1 / 561')
-shell('input','swipe','850','1100','200','1100','280');time.sleep(.6);match('561 / 561')
+shell('input','swipe','850','1100','200','1100','280');time.sleep(.6);match('2 / 561')
 shell('input','swipe','200','1100','850','1100','280');time.sleep(.6);match('1 / 561')
-report['right_next_left_previous_first_last_loop']='PASS'
+shell('input','swipe','200','1100','850','1100','280');time.sleep(.6);match('561 / 561')
+shell('input','swipe','850','1100','200','1100','280');time.sleep(.6);match('1 / 561')
+report['finger_left_next_right_previous_first_last_loop']='PASS'
 tap('揭晓');screenshot('android-review-v010-small-k5');tap('记住');match('2 / 561')
 tap('播放速度');tap('4.0×');a,b,c,d=bounds('播放或暂停');px=(a+c)//2;py=(b+d)//2
 x1,y1,x2,y2=bounds('播放进度');sx=x2-30;sy=(y1+y2)//2

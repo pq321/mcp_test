@@ -26,13 +26,13 @@ with tempfile.TemporaryDirectory() as data,tempfile.TemporaryDirectory() as prof
         ids=page.evaluate('PoliticsMemory.getCards().map(c=>c.id)');assert len(ids)==561
         page.locator('[data-tab="review"]').click()
         assert page.locator('.counter').inner_text()=='1 / 561'
-        swipe(page,75,285);assert page.locator('.counter').inner_text()=='2 / 561'
-        swipe(page,285,75);assert page.locator('.counter').inner_text()=='1 / 561'
-        swipe(page,285,75);assert page.locator('.counter').inner_text()=='561 / 561'
+        swipe(page,285,75);assert page.locator('.counter').inner_text()=='2 / 561'
         swipe(page,75,285);assert page.locator('.counter').inner_text()=='1 / 561'
+        swipe(page,75,285);assert page.locator('.counter').inner_text()=='561 / 561'
+        swipe(page,285,75);assert page.locator('.counter').inner_text()=='1 / 561'
         page.evaluate('PoliticsMemory.start(PoliticsMemory.getCards()[560].id)');page.locator('#reveal').click();page.get_by_role('button',name='记住',exact=True).click();page.wait_for_timeout(500)
         assert page.locator('.counter').inner_text()=='1 / 561'
-        report['right_next_left_previous_first_last_and_rating_wrap']='PASS'
+        report['finger_left_next_right_previous_first_last_and_rating_wrap']='PASS'
         assert page.evaluate('getComputedStyle(document.querySelector(".answer")).fontSize')=='14px'
         assert page.evaluate('getComputedStyle(document.querySelector(".title")).fontSize')=='17px'
         page.screenshot(path=str(out/'web-review-v010-small.png'))
