@@ -45,7 +45,8 @@ public final class SpeechService extends Service {
     private AudioCatalog catalogue;
     private int generation=0,cardIndex=0;
     private boolean prepared=false;
-    private float speed=1.0f;\n    private final Runnable progressTicker=new Runnable(){public void run(){if(player!=null&&prepared){try{currentPosition=player.getCurrentPosition();currentDuration=player.getDuration();}catch(Exception ignored){}}if(active)handler.postDelayed(this,250);}};
+    private float speed=1.0f;
+    private final Runnable progressTicker=new Runnable(){public void run(){if(player!=null&&prepared){try{currentPosition=player.getCurrentPosition();currentDuration=player.getDuration();}catch(Exception ignored){}}if(active)handler.postDelayed(this,250);}};
 
     @Override public void onCreate(){
         super.onCreate();
@@ -169,7 +170,8 @@ public final class SpeechService extends Service {
          .addAction(android.R.drawable.ic_menu_close_clear_cancel,"停止",serviceIntent(STOP,2));
         return b.build();
     }
-    private void updateNotification(){\n        try{if(player!=null&&prepared){currentPosition=player.getCurrentPosition();currentDuration=player.getDuration();}}catch(Exception ignored){}
+    private void updateNotification(){
+        try{if(player!=null&&prepared){currentPosition=player.getCurrentPosition();currentDuration=player.getDuration();}}catch(Exception ignored){}
         NotificationManager m=getSystemService(NotificationManager.class);
         if(m!=null&&active)m.notify(NOTIFICATION_ID,notification());
     }
