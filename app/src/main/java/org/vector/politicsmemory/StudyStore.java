@@ -199,7 +199,7 @@ final class StudyStore extends SQLiteOpenHelper {
                 "COALESCE(r.score,0),COALESCE(r.review_count,0),COALESCE(r.due_at,0),COALESCE(r.last_review_at,0),"+
                 "COALESCE(r.last_rating,''),COALESCE(r.last_yes_day,''),COALESCE(r.needs_review,0),CASE WHEN w.card_id IS NULL THEN 0 ELSE 1 END "+
                 "FROM cards c LEFT JOIN reviews r ON r.card_id=c.id LEFT JOIN wrong_cards w ON w.card_id=c.id "+
-                "WHERE c.pack_id!='politics-sixiu-k' ORDER BY c.subject,c.chapter,c.topic,c.pos,c.id";
+                "WHERE c.pack_id!='politics-sixiu-k' ORDER BY CASE WHEN c.pack_id='politics-suyi-full' THEN 0 ELSE 1 END,c.pack_id,c.pos,c.id";
         try(Cursor c=getReadableDatabase().rawQuery(sql,null)){
             while(c.moveToNext()) {
                 StudyCard a=new StudyCard();
