@@ -67,7 +67,7 @@ def main():
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#ffffff"><title>政治背诵 · 苏一全科</title>
 <style>{css}</style></head><body>
-<div id="app"><header id="toolbar"></header><main id="main"></main><section id="ratings"></section><nav id="nav"></nav></div>
+<div id="app"><header id="toolbar"></header><main id="main"></main><section id="ratings"></section><section id="player" hidden aria-label="播放器"></section><nav id="nav"></nav></div>
 <div id="toast" role="status" aria-live="polite"></div><dialog id="dialog"></dialog>
 <input id="import" type="file" accept=".json,application/json" hidden>
 <script>window.POLITICS_PACK={safe_json(pack)};window.POLITICS_AUDIO_INDEX={safe_json(index)};</script>
@@ -75,9 +75,9 @@ def main():
     (out / 'index.html').write_text(html, encoding='utf-8')
     (out / 'audio-index.json').write_text(json.dumps(index, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     (out / 'README.txt').write_text(
-        'PoliticsMemory v0.8 desktop preview\\n'
-        'Open index.html in a modern browser. Keep the audio/ folder beside it for offline speech.\\n'
-        'For browser localStorage persistence, use the same browser profile. Export a JSON backup before clearing site data.\\n',
+        'PoliticsMemory v0.9 desktop preview\n'
+        'Open index.html in a modern browser. Keep the audio/ folder beside it for offline speech.\n'
+        'For browser localStorage persistence, use the same browser profile. Export a JSON backup before clearing site data.\n',
         encoding='utf-8')
     print(f'PASS: built self-contained preview for {len(cards)} cards and {len(items)} verified audio clips')
 

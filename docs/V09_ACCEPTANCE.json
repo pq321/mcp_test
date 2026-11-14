@@ -1,0 +1,35 @@
+{
+  "version": "0.9.0",
+  "run_id": "43588685680",
+  "source_base": "775c3f66e5ace1b436b9e93de2ddbeff75527dda",
+  "audio_groups": 561,
+  "web": {
+    "global_loop_gestures_and_rating": "PASS",
+    "http_seek": {
+      "time": 12.996,
+      "duration": 25.992
+    },
+    "audio_scope_seek_pause_4x_sync": "PASS",
+    "file_url_offline_audio": "PASS",
+    "offline_seek": {
+      "time": 12.996,
+      "duration": 25.992
+    },
+    "responsive_layout_and_real_reopen_persistence": "PASS",
+    "card_count": 561,
+    "browser_errors": []
+  },
+  "android": {
+    "global_loop_and_rating_wrap": "PASS",
+    "real_media_4x_pause_and_seek": "PASS",
+    "player_survives_tab_switch": "PASS",
+    "display": "1080x2340, emulator density 480 and 440; not physical OPPO hardware"
+  },
+  "sha256": {
+    "app/build/outputs/apk/debug/app-debug.apk": "273c688a3dab229db5b3d3183fa8b301e62a09dbb5918638cafb39a3755e9df5",
+    "web-preview/index.html": "555d5e71bfa238149f55eab1db9b8094b72c2635b6ed5f1cc68fedc6064a0206",
+    "preview/app.js": "0ea8565afa97948a3eaabad6f2a5bb598d579c70703e1d0b299828ce925389fd",
+    "preview/app.css": "1231b92b887f0e758fbb2911b7429ff64cdfcdbc5a5df87f9234942c0815d86b",
+    "data/suyi-full.json": "20b2236109e35b69244b7826da3e239a67b4f735e54f84977b5a6af0fa73d9e4"
+  }
+}

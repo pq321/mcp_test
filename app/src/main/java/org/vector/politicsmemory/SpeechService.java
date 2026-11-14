@@ -28,6 +28,8 @@ public final class SpeechService extends Service {
     static final String SET_SPEED="org.vector.politicsmemory.SET_SPEED";
     static final String SEEK="org.vector.politicsmemory.SEEK";
     static final String EXTRA_POSITION="playback_position";
+    static final String EXTRA_REVIEW="follow_review",EXTRA_PAUSED="start_paused";
+    static volatile boolean followReview=false;
     static volatile int currentPosition=0,currentDuration=0;
     static volatile String currentTitle="";
     static volatile float currentSpeed=1.0f;
@@ -45,6 +47,7 @@ public final class SpeechService extends Service {
     private AudioCatalog catalogue;
     private int generation=0,cardIndex=0;
     private boolean prepared=false;
+    private int pendingSeek=-1;
     private float speed=1.0f;
     private final Runnable progressTicker=new Runnable(){public void run(){if(player!=null&&prepared){try{currentPosition=player.getCurrentPosition();currentDuration=player.getDuration();}catch(Exception ignored){}}if(active)handler.postDelayed(this,250);}};
 
@@ -63,7 +66,7 @@ public final class SpeechService extends Service {
         if(i==null)return START_NOT_STICKY;
         String action=i.getAction();
         if(STOP.equals(action)){stopPlayback();return START_NOT_STICKY;}
-        if(SEEK.equals(action)){int pos=Math.max(0,i.getIntExtra(EXTRA_POSITION,0));try{if(player!=null&&prepared)player.seekTo(pos);}catch(Exception e){Log.w(TAG,"seek",e);}return START_NOT_STICKY;}
+        if(SEEK.equals(action)){int pos=Math.max(0,i.getIntExtra(EXTRA_POSITION,0));pendingSeek=pos;try{if(player!=null&&prepared){pos=Math.min(pos,currentDuration);player.seekTo(pos);currentPosition=pos;pendingSeek=-1;}}catch(Exception e){Log.w(TAG,"seek",e);}return START_NOT_STICKY;}
         if(SET_SPEED.equals(action)){
             speed=clampSpeed(i.getFloatExtra(EXTRA_SPEED,speed));currentSpeed=speed;
             applySpeed();updateNotification();return START_NOT_STICKY;
@@ -73,8 +76,9 @@ public final class SpeechService extends Service {
             return START_NOT_STICKY;
         }
         if(!PLAY.equals(action))return START_NOT_STICKY;
-        generation++;releasePlayer();playlist.clear();cardIndex=0;paused=false;prepared=false;
-        speed=clampSpeed(i.getFloatExtra(EXTRA_SPEED,speed));
+        generation++;releasePlayer();playlist.clear();cardIndex=0;paused=i.getBooleanExtra(EXTRA_PAUSED,false);prepared=false;pendingSeek=-1;
+        followReview=i.getBooleanExtra(EXTRA_REVIEW,false);
+        speed=clampSpeed(i.getFloatExtra(EXTRA_SPEED,speed));currentSpeed=speed;
         // Reload after an audio-pack import while the app is already running.
         catalogue=new AudioCatalog(this);
         StudyStore store=new StudyStore(this);
@@ -103,10 +107,11 @@ public final class SpeechService extends Service {
         playCurrent();return START_NOT_STICKY;
     }
     private void playCurrent(){
-        if(!active||paused)return;
-        releasePlayer();prepared=false;
+        if(!active)return;
+        releasePlayer();prepared=false;currentPosition=0;currentDuration=0;
         while(cardIndex<playlist.size()&&!catalogue.ready(playlist.get(cardIndex)))cardIndex++;
         if(cardIndex>=playlist.size()){stopPlayback();return;}
+        currentTitle=playlist.get(cardIndex).displayTitle();
         final int token=generation;final int index=cardIndex;
         MediaPlayer next=new MediaPlayer();player=next;
         try{
@@ -115,23 +120,25 @@ public final class SpeechService extends Service {
             if(!catalogue.attach(next,playlist.get(cardIndex))){advance(token,index);return;}
             next.setOnPreparedListener(p->{
                 if(!active||token!=generation||index!=cardIndex||p!=player)return;
-                prepared=true;
+                prepared=true;currentDuration=p.getDuration();currentPosition=0;currentSpeed=speed;
                 applySpeed(p);
-                if(!paused)p.start();
+                if(pendingSeek>=0){p.seekTo(Math.min(pendingSeek,currentDuration));pendingSeek=-1;}
+                if(!paused)p.start();else if(p.isPlaying())p.pause();
+                handler.removeCallbacks(progressTicker);handler.post(progressTicker);updateNotification();
             });
             next.setOnCompletionListener(p->handler.post(()->advance(token,index)));
             next.setOnErrorListener((p,what,extra)->{handler.post(()->advance(token,index));return true;});
             updateNotification();next.prepareAsync();
         }catch(Exception e){Log.e(TAG,"MP3 decoding error",e);advance(token,index);}
     }
-    private static float clampSpeed(float value){return Math.max(0.75f,Math.min(4.0f,value));}
-    private void applySpeed(){if(player!=null&&prepared)applySpeed(player);currentSpeed=speed;}
+    private static float clampSpeed(float value){return Float.isNaN(value)||Float.isInfinite(value)?1f:Math.max(0.75f,Math.min(4.0f,value));}
+    private void applySpeed(){if(player!=null&&prepared){applySpeed(player);if(paused&&player.isPlaying())player.pause();}else currentSpeed=speed;}
     private void applySpeed(MediaPlayer target){
-        try{if(android.os.Build.VERSION.SDK_INT>=23)target.setPlaybackParams(new PlaybackParams().setSpeed(speed).setPitch(1.0f));}
+        try{if(android.os.Build.VERSION.SDK_INT>=23)target.setPlaybackParams(new PlaybackParams().setSpeed(speed).setPitch(1.0f));currentSpeed=target.getPlaybackParams().getSpeed();}
         catch(Exception e){Log.w(TAG,"Playback speed update rejected",e);}
     }
     private void advance(int token,int index){
-        if(!active||paused||token!=generation||index!=cardIndex)return;
+        if(!active||token!=generation||index!=cardIndex)return;
         cardIndex++;playCurrent();
     }
     private void pausePlayback(){
@@ -146,11 +153,12 @@ public final class SpeechService extends Service {
         updateNotification();
     }
     private void releasePlayer(){
+        handler.removeCallbacks(progressTicker);
         MediaPlayer old=player;player=null;prepared=false;
         if(old!=null){try{old.reset();old.release();}catch(Exception ignored){}}
     }
     private void stopPlayback(){
-        active=false;paused=false;generation++;releasePlayer();
+        active=false;paused=false;followReview=false;generation++;releasePlayer();currentPosition=0;currentDuration=0;currentTitle="";
         stopForeground(true);stopSelf();
     }
     private PendingIntent serviceIntent(String action,int request){
@@ -175,5 +183,10 @@ public final class SpeechService extends Service {
         NotificationManager m=getSystemService(NotificationManager.class);
         if(m!=null&&active)m.notify(NOTIFICATION_ID,notification());
     }
-    @Override public void onDestroy(){active=false;paused=false;generation++;releasePlayer();super.onDestroy();}
+    @Override protected void dump(java.io.FileDescriptor fd,java.io.PrintWriter out,String[] args){
+        out.println("active="+active+" paused="+paused+" speed="+currentSpeed);
+        out.println("position_ms="+currentPosition+" duration_ms="+currentDuration);
+        out.println("title="+currentTitle);out.println("playlist_size="+playlist.size());
+    }
+    @Override public void onDestroy(){active=false;paused=false;followReview=false;generation++;releasePlayer();currentPosition=0;currentDuration=0;currentTitle="";super.onDestroy();}
 }

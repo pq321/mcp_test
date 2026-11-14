@@ -1,0 +1,6 @@
+{
+  "global_loop_and_rating_wrap": "PASS",
+  "real_media_4x_pause_and_seek": "PASS",
+  "player_survives_tab_switch": "PASS",
+  "display": "1080x2340, emulator density 480 and 440; not physical OPPO hardware"
+}

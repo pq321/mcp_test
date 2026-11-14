@@ -1,11 +1,17 @@
-# PoliticsMemory v0.8 — Complete offline web preview
+# v0.9 极简整改
 
-This directory is the complete built preview, not just source code.
+保留三档评分与原始学习记录，苏一561组正文与音频不改写。
 
-- Open `index.html` in a modern browser.
-- Keep the `audio/` directory beside `index.html`.
-- `audio-index.json` maps all 561 groups to their verified MP3 files.
-- The preview is self-contained and works offline after download/extraction.
-- Study progress is stored locally in the current browser profile; export a JSON backup before clearing browser data.
+- 全局知识组队列：左滑上一组，右滑下一组；首尾循环，评分后同样循环。
+- 位置 → 名称 → 小字回忆问题 → 分隔线 → 答案 → 末尾红色9号备注。
+- 底部播放器：播放/暂停、进度、时间、0.75—4×倍速。播放状态跨标签页保留。暂停时切倍速不会自行播放。
+- 资料三级目录及知识组右侧均为播放按钮；标题进入全局背诵，目录播放限定所选范围。
+- 无工具菜单、无我的页面；仅保留同步入口（本地JSON备份导出/导入，不冒充云同步）。
+- Android适配系统dp；验收分辨率1080×2340，分别480/440dpi模拟。网页检查320/360/393/412逻辑像素宽度和桌面。
 
-Source files remain in `preview/`; the source knowledge pack is in `data/suyi-full.json`.
+`web-preview/`是包含561个MP3的完整成品。`preview/`是可编辑源码，音频引用同仓库的`web-preview/audio/`，不重复保存大文件。APK与完整网页ZIP发布到GitHub Release。
+
+## 验收边界
+`qa/web_smoke.py`使用真实浏览器、MP3与持久化配置；`qa/android_smoke.py`使用安装后的APK、实际MediaPlayer与Android模拟器。结果及截图保存到`evidence/`。模拟器不等于实体OPPO K5真机。
+
+本轮只改交互和呈现，未把前75页文字标成逐字终审。旧知识组ID及复习数据迁移规则不变。

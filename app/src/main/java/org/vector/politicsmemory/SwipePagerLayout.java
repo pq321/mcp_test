@@ -117,7 +117,7 @@ final class SwipePagerLayout extends FrameLayout {
         }).start();
     }
     void advanceAfterRating(){
-        if(animating||dragging)return;
+        if(animating||dragging||count<2)return;
         int next=(index+1)%count;
         ensureNeighbor(next,1,Math.max(1,getWidth()));
         completeSwipe(1);

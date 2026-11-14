@@ -1,3 +1,7 @@
+# PoliticsMemory 0.9 · 极简成组背诵
+
+完整网页：`web-preview/index.html`（包含561条录音）。Android APK 和网页完整ZIP在 Releases 的 `v0.9.0-minimal`。本次要求与验收见 `docs/MINIMAL_V09.md` 和 `docs/V09_ACCEPTANCE.json`。
+
 # 政治背诵 · PoliticsMemory v0.8
 
 苏一全科成组背诵工具。**复习单位是一组完整知识点，不是孤立短句。** 本版同时提供桌面网页预览和原生 Android APK。

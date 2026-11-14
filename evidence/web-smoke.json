@@ -1,0 +1,16 @@
+{
+  "global_loop_gestures_and_rating": "PASS",
+  "http_seek": {
+    "time": 12.996,
+    "duration": 25.992
+  },
+  "audio_scope_seek_pause_4x_sync": "PASS",
+  "file_url_offline_audio": "PASS",
+  "offline_seek": {
+    "time": 12.996,
+    "duration": 25.992
+  },
+  "responsive_layout_and_real_reopen_persistence": "PASS",
+  "card_count": 561,
+  "browser_errors": []
+}
