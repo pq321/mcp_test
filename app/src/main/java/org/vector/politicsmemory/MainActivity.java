@@ -47,7 +47,7 @@ public final class MainActivity extends Activity {
     private static final int IMPORT=20,EXPORT_JSON=21,EXPORT_CSV=22;
     private final String[] tabs={"复习","资料","统计"};
     private StudyStore store;
-    private LinearLayout root,nav;
+    private LinearLayout root,nav,playerBar;\n    private android.widget.SeekBar playerSeek;\n    private TextView playerPlay,playerTime,playerSpeedLabel;\n    private final android.os.Handler playerHandler=new android.os.Handler(android.os.Looper.getMainLooper());\n    private boolean seeking=false;
     private FrameLayout content;
     private int currentTab=1;
     private boolean showAnswer=false;
@@ -101,7 +101,7 @@ public final class MainActivity extends Activity {
         nav=row();nav.setBackground(stroke(WHITE,0,0xffeeeeee));
         root.addView(nav,lp(-1,62));
     }
-    private void switchTab(int index){
+    private final Runnable playerTicker=new Runnable(){public void run(){refreshPlayerBar();playerHandler.postDelayed(this,500);}};\n    private LinearLayout buildPlayerBar(){\n        LinearLayout bar=row();bar.setBackgroundColor(WHITE);bar.setPadding(dp(10),0,dp(10),0);\n        playerPlay=text("▶",17,TEAL,true);playerPlay.setGravity(Gravity.CENTER);bar.addView(playerPlay,lp(32,-1));\n        playerTime=text("0:00 / 0:00",10,MUTED,false);bar.addView(playerTime,lp(78,-2));\n        playerSeek=new android.widget.SeekBar(this);playerSeek.setMax(1000);playerSeek.setProgressTintList(ColorStateList.valueOf(TEAL));playerSeek.setThumbTintList(ColorStateList.valueOf(TEAL));bar.addView(playerSeek,new LinearLayout.LayoutParams(0,dp(30),1));\n        playerSpeedLabel=text("1×",12,TEAL,true);playerSpeedLabel.setGravity(Gravity.CENTER);bar.addView(playerSpeedLabel,lp(42,-1));\n        playerPlay.setOnClickListener(v->{if(!SpeechService.active)return;Intent i=new Intent(this,SpeechService.class);i.setAction(SpeechService.TOGGLE);startService(i);});\n        playerSpeedLabel.setOnClickListener(v->{float[] speeds={0.75f,1f,1.25f,1.5f,1.75f,2f,2.5f,3f,3.5f,4f};float now=speechSpeed();int at=0;for(int n=0;n<speeds.length;n++)if(Math.abs(speeds[n]-now)<.01f)at=n;float next=speeds[(at+1)%speeds.length];store.saveSetting("speech_speed",Float.toString(next));Intent i=new Intent(this,SpeechService.class);i.setAction(SpeechService.SET_SPEED);i.putExtra(SpeechService.EXTRA_SPEED,next);if(SpeechService.active)startService(i);refreshPlayerBar();});\n        playerSeek.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener(){public void onProgressChanged(android.widget.SeekBar b,int p,boolean user){if(user&&SpeechService.currentDuration>0)playerTime.setText(formatTime(p*SpeechService.currentDuration/1000)+" / "+formatTime(SpeechService.currentDuration));}public void onStartTrackingTouch(android.widget.SeekBar b){seeking=true;}public void onStopTrackingTouch(android.widget.SeekBar b){seeking=false;if(SpeechService.active){Intent i=new Intent(MainActivity.this,SpeechService.class);i.setAction(SpeechService.SEEK);i.putExtra(SpeechService.EXTRA_POSITION,b.getProgress()*SpeechService.currentDuration/1000);startService(i);}}});\n        return bar;\n    }\n    private String formatTime(int ms){int sec=Math.max(0,ms/1000);return (sec/60)+":"+String.format(Locale.US,"%02d",sec%60);}\n    private void refreshPlayerBar(){if(playerBar==null)return;boolean active=SpeechService.active;playerBar.setVisibility(active?View.VISIBLE:View.GONE);if(!active)return;playerPlay.setText(SpeechService.paused?"▶":"Ⅱ");playerSpeedLabel.setText(String.format(Locale.US,"%.2g×",SpeechService.currentSpeed));int duration=SpeechService.currentDuration,position=SpeechService.currentPosition;if(!seeking){try{if(duration>0)playerSeek.setProgress(Math.max(0,Math.min(1000,position*1000/duration)));}catch(Exception ignored){}}playerTime.setText(formatTime(position)+" / "+formatTime(duration));}\n    private void switchTab(int index){
         currentTab=index;content.removeAllViews();pager=null;
         if(index==0)showReview();
         else if(index==1)showCatalogue();
@@ -153,7 +153,7 @@ public final class MainActivity extends Activity {
             float speed=values[which];store.saveSetting("speech_speed",Float.toString(speed));
             if(SpeechService.active){Intent i=new Intent(this,SpeechService.class);i.setAction(SpeechService.SET_SPEED);i.putExtra(SpeechService.EXTRA_SPEED,speed);startService(i);}
             dialog.dismiss();Toast.makeText(this,"已设置为 "+labels[which],Toast.LENGTH_SHORT).show();
-            if(pager!=null)pager.refresh();
+            if(pager!=null)pager.refresh();refreshPlayerBar();
         }).setNegativeButton("取消",null).show();
     }
     /** Play all cards from this heading, then continue to the following headings. */
