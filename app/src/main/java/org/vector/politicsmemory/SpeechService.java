@@ -45,7 +45,7 @@ public final class SpeechService extends Service {
     private AudioCatalog catalogue;
     private int generation=0,cardIndex=0;
     private boolean prepared=false;
-    private float speed=1.0f;
+    private float speed=1.0f;\n    private final Runnable progressTicker=new Runnable(){public void run(){if(player!=null&&prepared){try{currentPosition=player.getCurrentPosition();currentDuration=player.getDuration();}catch(Exception ignored){}}if(active)handler.postDelayed(this,250);}};
 
     @Override public void onCreate(){
         super.onCreate();
