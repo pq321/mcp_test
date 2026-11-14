@@ -80,8 +80,8 @@ final class SwipePagerLayout extends FrameLayout {
     private void move(float dx){
         int width=Math.max(1,getWidth());
         int dir=dx>=0?1:-1; // +1 right gesture -> next; -1 left gesture -> previous
-        int target=index+dir;
-        if(target<0||target>=count){
+        int target=(index+dir+count)%count;
+        if(count<=1){
             if(neighbor!=null){removeView(neighbor);neighbor=null;neighborIndex=-1;}
             current.setTranslationX(dx*0.15f);return;
         }
