@@ -11,7 +11,7 @@ try{mergeCards(imports.filter(validCard))}catch(e){}
 const sig=c=>{let h=2166136261;for(const ch of c.question+'\n'+c.answer)h=Math.imul(h^ch.codePointAt(0),16777619);return (h>>>0).toString(16)};
 for(const c of cards){const r=reviews[c.id];if(r&&r.contentSig&&r.contentSig!==sig(c))r.needsReview=true}
 let app={tab:stored.tab==='review'?'review':'books',show:!!stored.show,goal:Math.max(1,Math.min(500,Number(stored.goal)||25)),speed:SPEEDS.includes(Number(stored.speed))?Number(stored.speed):1,index:Number(stored.index)||0,scope:stored.scope||'今日复习',session:[],search:'',open:new Set(stored.open||[])};
-app.session=(stored.session||[]).map(id=>cards.find(c=>c.id===id)).filter(Boolean);
+const savedCurrent=(stored.session||[])[Number(stored.index)||0]||'';app.session=cards.slice();app.index=Math.max(0,cards.findIndex(c=>c.id===savedCurrent));
 let toastTimer,moving=false,suppressUntil=0,gesture=null,audio=new Audio(),playingId='';audio.preload='none';audio.preservesPitch=true;audio.playbackRate=app.speed;audio.onended=()=>{playingId='';if(app.tab==='review')toolbar()};audio.onerror=()=>{playingId='';toast('本组录音加载失败，请检查音频包')};
 function persist(){try{localStorage.setItem(KEY,JSON.stringify({version:7,reviews,events,wrong:[...wrong],imports,show:app.show,goal:app.goal,speed:app.speed,index:app.index,scope:app.scope,session:app.session.map(c=>c.id),tab:app.tab,open:[...app.open]}));delete document.body.dataset.storage;return true}catch(e){document.body.dataset.storage='failed';toast('浏览器未允许保存，请使用导出备份保存本次进度。');return false}}
 function toast(t){$('toast').textContent=t;$('toast').classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('on'),2400)}
