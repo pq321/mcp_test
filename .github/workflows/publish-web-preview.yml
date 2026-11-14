@@ -1,6 +1,10 @@
 name: Publish complete PoliticsMemory web preview to repository
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'source/publish-preview-run.txt'
   workflow_run:
     workflows: ["Build and deploy PoliticsMemory v0.8"]
     types: [completed]
@@ -22,7 +26,7 @@ concurrency:
 jobs:
   publish:
     if: >-
-      ${{ (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion != 'cancelled') }}
+      ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.event.workflow_run.conclusion != 'cancelled') }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -37,8 +41,11 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "run_id=${{ inputs.run_id }}" >> "$GITHUB_OUTPUT"
-          else
+          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
             echo "run_id=${{ github.event.workflow_run.id }}" >> "$GITHUB_OUTPUT"
+          else
+            test -s source/publish-preview-run.txt
+            echo "run_id=$(tr -d '[:space:]' < source/publish-preview-run.txt)" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Download complete web preview artifact
