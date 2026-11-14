@@ -1,0 +1,38 @@
+name: Minimal UI release
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/minimal-release.yml'
+      - 'scripts/finish_minimal_ui.py'
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: minimal-ui-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Capture exact editable source
+        run: |
+          python - <<'PY'
+          import subprocess,zipfile
+          from pathlib import Path
+          paths=subprocess.check_output(['git','ls-files','-z']).decode().split('\0')
+          with zipfile.ZipFile('source-snapshot.zip','w',zipfile.ZIP_DEFLATED) as z:
+              for s in paths:
+                  if not s or s.endswith(('.mp3','.apk','.zip','.b64')): continue
+                  if s.startswith(('preview/audio/','source/')): continue
+                  if s.startswith('web-preview/') and s!='web-preview/audio-index.json': continue
+                  p=Path(s)
+                  if p.is_file(): z.write(p,s)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: minimal-ui-source-snapshot
+          path: source-snapshot.zip
+          retention-days: 7
