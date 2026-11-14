@@ -1836,6 +1836,11 @@
     "apk_artifact_sha256": "16c17c69c68215689168c3abc3de7c001bbe20ce2385f03583d54eaf81744a59",
     "preview_artifact_id": 14106237347,
     "preview_artifact_sha256": "4a060a8818e415912203d66396dd115da744f70f193d956984ba0c9ef81202b5",
-    "pages_note": "The configure-pages step returned 404 because this repository has no GitHub Pages site enabled. APK and preview artifacts were built and uploaded successfully."
+    "pages_note": "The configure-pages step returned 404 because this repository has no GitHub Pages site enabled. APK and preview artifacts were built and uploaded successfully.",
+    "apk_file_sha256": "2becbca9c79833a0934a6413359e7d5ec57fc8d1ee03084ade4e21ae263c7224",
+    "apk_size_bytes": 222928456,
+    "preview_zip_sha256": "4a060a8818e415912203d66396dd115da744f70f193d956984ba0c9ef81202b5",
+    "preview_zip_size_bytes": 223973205,
+    "preview_mp3_count": 561
   }
 }
