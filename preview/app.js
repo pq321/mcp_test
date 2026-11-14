@@ -1,19 +1,19 @@
-/* PoliticsMemory v0.9 — five-subject grouped recall, verified offline audio, no analytics or network calls. */
+/* PoliticsMemory v0.10 — five-subject grouped recall, verified offline audio, paired progress upload, no analytics. */
 (()=>{'use strict';
 const PACK=window.POLITICS_PACK,AUDIO_INDEX=window.POLITICS_AUDIO_INDEX||{schema_version:1,items:{}};if(!PACK||!Array.isArray(PACK.cards)){document.getElementById('main').textContent='资料未加载。请保留预览文件完整。';return}
 const KEY='politics_suyi_grouped_v07',LEGACY='politics_web_preview_v1',SUBJECTS=['马原','毛中特','新思想','史纲','思修'],SPEEDS=[.75,1,1.25,1.5,1.75,2,2.5,3,3.5,4];
 const $=id=>document.getElementById(id),esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let stored={};try{stored=JSON.parse(localStorage.getItem(KEY)||'{}')||{}}catch(e){stored={}}
-let cards=PACK.cards.map(c=>({...c}));let reviews=stored.reviews||{},events=Array.isArray(stored.events)?stored.events:[],wrong=new Set(stored.wrong||[]),imports=Array.isArray(stored.imports)?stored.imports:[];
+let cards=PACK.cards.map(c=>({...c}));let reviews=stored.reviews||{},events=Array.isArray(stored.events)?stored.events:[],wrong=new Set(stored.wrong||[]),imports=Array.isArray(stored.imports)?stored.imports:[],wrongChanges=stored.wrongChanges||{};
 const validCard=c=>c&&typeof c.id==='string'&&c.id.length<200&&Array.isArray(c.path)&&c.path.length===3&&c.path.every(x=>typeof x==='string')&&typeof c.question==='string'&&typeof c.answer==='string';
 function mergeCards(list){for(const c of list){if(!validCard(c))throw Error('卡片必须有 id、三层 path、question、answer');const old=cards.find(x=>x.id===c.id);if(old){if((c.revision||1)<(old.revision||1))continue;if(old.question!==c.question||old.answer!==c.answer){if(reviews[c.id])reviews[c.id].needsReview=true}Object.assign(old,c)}else cards.push({...c})}}
 try{mergeCards(imports.filter(validCard))}catch(e){}
 const sig=c=>{let h=2166136261;for(const ch of c.question+'\n'+c.answer)h=Math.imul(h^ch.codePointAt(0),16777619);return (h>>>0).toString(16)};
 for(const c of cards){const r=reviews[c.id];if(r&&r.contentSig&&r.contentSig!==sig(c))r.needsReview=true}
-let app={tab:stored.tab==='review'?'review':'books',show:!!stored.show,goal:Math.max(1,Math.min(500,Number(stored.goal)||25)),speed:SPEEDS.includes(Number(stored.speed))?Number(stored.speed):1,index:Number(stored.index)||0,scope:'全部知识组',session:[],search:'',open:new Set(stored.open||[])};
+let app={tab:stored.tab==='review'?'review':'books',show:!!stored.show,goal:Math.max(1,Math.min(500,Number(stored.goal)||25)),speed:SPEEDS.includes(Number(stored.speed))?Number(stored.speed):1,index:Number(stored.index)||0,scope:'全部知识组',positionAt:Number(stored.positionAt)||0,session:[],search:'',open:new Set(stored.open||[])};
 const savedCurrent=(stored.session||[])[Number(stored.index)||0]||'';app.session=cards.slice();app.index=Math.max(0,cards.findIndex(c=>c.id===savedCurrent));
 let toastTimer,moving=false,suppressUntil=0,gesture=null,audio=new Audio(),playingId='';audio.preload='none';audio.preservesPitch=true;audio.playbackRate=app.speed;
-function persist(){try{localStorage.setItem(KEY,JSON.stringify({version:7,reviews,events,wrong:[...wrong],imports,show:app.show,goal:app.goal,speed:app.speed,index:app.index,scope:app.scope,session:app.session.map(c=>c.id),tab:app.tab,open:[...app.open]}));delete document.body.dataset.storage;return true}catch(e){document.body.dataset.storage='failed';toast('浏览器未允许保存，请使用导出备份保存本次进度。');return false}}
+function persist(){try{localStorage.setItem(KEY,JSON.stringify({version:10,reviews,events,wrong:[...wrong],wrongChanges,positionAt:app.positionAt,imports,show:app.show,goal:app.goal,speed:app.speed,index:app.index,scope:app.scope,session:app.session.map(c=>c.id),tab:app.tab,open:[...app.open]}));delete document.body.dataset.storage;return true}catch(e){document.body.dataset.storage='failed';toast('浏览器未允许保存，请点同步把进度保存到电脑。');return false}}
 function toast(t){$('toast').textContent=t;$('toast').classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('on'),2400)}
 function state(c){return reviews[c.id]||{score:0,reviewCount:0,lastRating:'',lastYesDay:'',dueAt:0,lastReviewAt:0,needsReview:false}}
 function mastered(c){const r=state(c);return r.score>=3&&r.lastRating==='yes'&&!r.needsReview}
@@ -21,10 +21,10 @@ function label(c){const r=state(c);return r.needsReview?'待复核':!r.reviewCou
 function summary(list){return{total:list.length,studied:list.filter(c=>state(c).reviewCount>0).length,mastered:list.filter(mastered).length,due:list.filter(c=>state(c).reviewCount>0&&(state(c).needsReview||state(c).dueAt<=Date.now())).length}}
 function today(){const due=cards.filter(c=>state(c).reviewCount>0&&(state(c).needsReview||state(c).dueAt<=Date.now())).sort((a,b)=>state(a).dueAt-state(b).dueAt);const unseen=cards.filter(c=>!state(c).reviewCount);return [...due,...unseen,...cards.filter(c=>!due.includes(c)&&!unseen.includes(c))]}
 function current(){return app.session[app.index]}
-function setScope(list,name,start){app.session=cards.slice();app.scope=name;app.index=Math.max(0,app.session.findIndex(c=>c.id===(start||list[0]?.id)));app.tab='review';render();persist()}
+function setScope(list,name,start){app.session=cards.slice();app.scope=name;app.index=Math.max(0,app.session.findIndex(c=>c.id===(start||list[0]?.id)));app.tab='review';app.positionAt=Date.now();render();persist()}
 function nav(tab){app.tab=tab;if(tab==='review'&&!app.session.length){app.session=today();app.index=0;app.scope='今日复习'}render();persist()}
 function renderNav(){$('nav').innerHTML=[['review','复习'],['books','资料'],['stats','统计']].map(([k,t])=>`<button data-tab="${k}" class="${app.tab===k?'active':''}" aria-current="${app.tab===k?'page':'false'}">${t}</button>`).join('');$('nav').querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>nav(b.dataset.tab))}
-function toolbar(){const is=app.tab==='review',c=current();$('toolbar').innerHTML=is?'<button id="back" aria-label="返回资料">‹</button><span class="counter">'+(app.session.length?app.index+1:0)+' / '+app.session.length+'</span><button id="reveal">'+(app.show?'收起':'揭晓')+'</button><button id="more" aria-label="同步数据">同步</button>':'<span class="brand">政治背诵</span><button id="more" aria-label="同步数据">同步</button>';$('more').onclick=syncData;if(is){$('back').onclick=()=>nav('books');$('reveal').onclick=toggle}}
+function toolbar(){const is=app.tab==='review',c=current();$('toolbar').innerHTML=is?'<button id="back" aria-label="返回资料">‹</button><span class="counter">'+(app.session.length?app.index+1:0)+' / '+app.session.length+'</span><button id="reveal">'+(app.show?'收起':'揭晓')+'</button><button id="more" aria-label="同步数据">同步</button>':'<span class="brand">政治背诵</span><button id="more" aria-label="同步数据">同步</button>';$('more').onclick=syncData;$('more').title='v0.10 · 点击同步；长按或右键重新连接';$('more').oncontextmenu=e=>{e.preventDefault();connectComputer()};if(is){$('back').onclick=()=>nav('books');$('reveal').onclick=toggle}}
 function render(){gesture=null;renderNav();$('ratings').innerHTML='';if(app.tab==='review'){if(!app.session.length)app.session=today();app.index=app.session.length?((app.index%app.session.length)+app.session.length)%app.session.length:0;renderReview()}else if(app.tab==='books')renderBooks();else renderStats();toolbar();updatePlayer()}
 function renderReview(){const c=current();if(!c){$('main').innerHTML='<div class="empty">当前没有待复习的知识组。<br>从资料选择科目或章节，随时开始背诵。</div>';return}
  const paragraphs=c.answer.split(/\n\s*\n/);const answer=paragraphs.length>1?paragraphs.map(p=>`<p>${esc(p)}</p>`).join(''):c.answer.split('\n').map(p=>`<div class="line">${esc(p)}</div>`).join('');
@@ -32,16 +32,17 @@ function renderReview(){const c=current();if(!c){$('main').innerHTML='<div class
  $('main').scrollTop=0;
  $('ratings').innerHTML=`<div class="grade-row"><button class="grade no" data-rate="no" ${app.show?'':'disabled'}>忘记</button><button class="grade fuzzy" data-rate="fuzzy" ${app.show?'':'disabled'}>模糊</button><button class="grade yes" data-rate="yes" ${app.show?'':'disabled'}>记住</button></div>`;
  $('ratings').querySelectorAll('[data-rate]').forEach(b=>b.onclick=()=>rate(b.dataset.rate));
- const title=$('main').querySelector('.title');title.oncontextmenu=e=>{e.preventDefault();wrong.has(c.id)?wrong.delete(c.id):wrong.add(c.id);persist();toast(wrong.has(c.id)?'已加入错题':'已移出错题')};
+ const title=$('main').querySelector('.title');title.oncontextmenu=e=>{e.preventDefault();wrong.has(c.id)?wrong.delete(c.id):wrong.add(c.id);wrongChanges[c.id]={marked:wrong.has(c.id),at:Date.now()};persist();toast(wrong.has(c.id)?'已加入错题':'已移出错题')};
  const el=$('reviewContent');el.onclick=e=>{if(Date.now()<suppressUntil||moving||e.target.closest('button,select,a'))return;toggle()};
  el.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'&&e.button!==0)return;gesture={id:e.pointerId,x:e.clientX,y:e.clientY,dx:0,dy:0,axis:null};});
  el.addEventListener('pointermove',e=>{if(!gesture||gesture.id!==e.pointerId||moving)return;const g=gesture;g.dx=e.clientX-g.x;g.dy=e.clientY-g.y;if(!g.axis&&Math.max(Math.abs(g.dx),Math.abs(g.dy))>9)g.axis=Math.abs(g.dx)>Math.abs(g.dy)*1.35?'x':'y';if(g.axis==='x'){e.preventDefault();try{el.setPointerCapture(e.pointerId)}catch(err){}el.style.transform=`translateX(${g.dx}px)`;suppressUntil=Date.now()+350}else if(g.axis==='y')suppressUntil=Date.now()+250});
- const end=e=>{if(!gesture||gesture.id!==e.pointerId)return;const g=gesture;gesture=null;if(g.axis==='x'){suppressUntil=Date.now()+450;if(Math.abs(g.dx)>60){step(g.dx<0?-1:1,g.dx);return}bounce(el)}else if(g.axis==='y')suppressUntil=Date.now()+300};el.addEventListener('pointerup',end);el.addEventListener('pointercancel',()=>{gesture=null;suppressUntil=Date.now()+300;bounce(el)});
+ const end=e=>{if(!gesture||gesture.id!==e.pointerId)return;const g=gesture;gesture=null;if(g.axis==='x'){suppressUntil=Date.now()+450;if(Math.abs(g.dx)>60){step(g.dx>0?1:-1,g.dx); // Right swipe -> next; left swipe -> previous.
+return}bounce(el)}else if(g.axis==='y')suppressUntil=Date.now()+300};el.addEventListener('pointerup',end);el.addEventListener('pointercancel',()=>{gesture=null;suppressUntil=Date.now()+300;bounce(el)});
 }
 function reduced(){return matchMedia('(prefers-reduced-motion: reduce)').matches}
 function bounce(el){if(!el)return;el.style.transition=reduced()?'none':'transform 160ms ease-out';el.style.transform='translateX(0)';setTimeout(()=>{el.style.transition=''},170)}
 function toggle(){if(moving||!current())return;app.show=!app.show;renderReview();toolbar();persist()}
-function step(dir,startDx=0){if(moving||app.tab!=='review'||!app.session.length)return;const count=app.session.length,target=(app.index+dir+count)%count,el=$('reviewContent');moving=true;const sign=dir<0?-1:1,dist=Math.max(100,$('main').clientWidth);if(el){el.style.transition=reduced()?'none':'transform 150ms ease-out';el.style.transform='translateX('+sign*dist+'px)'}setTimeout(()=>{app.index=target;renderReview();toolbar();if(playSource==='review'&&playingId)playQueue(app.session.slice(app.index),'review',audio.paused);updatePlayer();const incoming=$('reviewContent');if(incoming&&!reduced()){incoming.style.transition='none';incoming.style.transform='translateX('+(-sign*dist)+'px)';requestAnimationFrame(()=>requestAnimationFrame(()=>{incoming.style.transition='transform 170ms ease-out';incoming.style.transform='translateX(0)'}))}persist();setTimeout(()=>{moving=false;if(incoming)incoming.style.transition=''},reduced()?0:190)},reduced()?0:155)}
+function step(dir,startDx=0){if(moving||app.tab!=='review'||!app.session.length)return;const count=app.session.length,target=(app.index+dir+count)%count,el=$('reviewContent');moving=true;const sign=dir<0?-1:1,dist=Math.max(100,$('main').clientWidth);if(el){el.style.transition=reduced()?'none':'transform 150ms ease-out';el.style.transform='translateX('+sign*dist+'px)'}setTimeout(()=>{app.index=target;app.positionAt=Date.now();renderReview();toolbar();if(playSource==='review'&&playingId)playQueue(rotated(app.session,app.index),'review',audio.paused);updatePlayer();const incoming=$('reviewContent');if(incoming&&!reduced()){incoming.style.transition='none';incoming.style.transform='translateX('+(-sign*dist)+'px)';requestAnimationFrame(()=>requestAnimationFrame(()=>{incoming.style.transition='transform 170ms ease-out';incoming.style.transform='translateX(0)'}))}persist();setTimeout(()=>{moving=false;if(incoming)incoming.style.transition=''},reduced()?0:190)},reduced()?0:155)}
 function day(ms){const d=new Date(ms);return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')}
 function nextDay(now,n){const d=new Date(now);d.setDate(d.getDate()+n);return +d}
 function rate(kind){if(!app.show||moving||!current()||!['no','fuzzy','yes'].includes(kind))return;const c=current(),r=state(c),now=Date.now();let score=r.score,yesDay=r.lastYesDay||'';if(kind==='no')score=0;else if(kind==='fuzzy')score=Math.max(1,score-1);else{score=yesDay===day(now)?Math.max(2,score):Math.min(4,Math.max(2,score+1));yesDay=day(now)}const due=kind==='no'?now+600000:kind==='fuzzy'?nextDay(now,1):nextDay(now,score===2?1:score===3?3:7);
@@ -77,12 +78,104 @@ function renderBooks(){
 function branch(key,name,list,child,special=false){const z=summary(list),path=special?[]:key.startsWith('S:')?[name]:key.slice(2).split('|');return `<details class="branch" data-open="${esc(key)}" ${app.open.has(key)?'open':''}><summary><span class="name">${esc(name)}</span><span class="count">${special?list.length:z.mastered+'/'+list.length}</span>${!special&&list.length?`<button class="start" data-start="${esc(JSON.stringify(path))}" aria-label="播放${esc(name)}">▶</button>`:''}</summary>${child()}</details>`}
 function renderStats(){const s=summary(cards),weak=cards.filter(c=>['no','fuzzy'].includes(state(c).lastRating)).length;$('main').innerHTML=`<div class="page"><h1>统计</h1><div class="stat-total">${s.mastered}<span class="small"> / ${s.total} 组</span></div><div class="small">已掌握完整知识组</div><div class="stat-grid"><div><b>${s.studied}</b><span class="small">已评分</span></div><div><b>${s.due}</b><span class="small">到期复习</span></div><div><b>${s.total-s.studied}</b><span class="small">未学习</span></div></div>${SUBJECTS.map(name=>{const z=summary(cards.filter(c=>c.path[0]===name));return `<div class="stat-row"><span>${name}</span><span>已背 ${z.studied}/${z.total} · 掌握 ${z.mastered}</span></div>`}).join('')}<p class="small">做题错题 ${wrong.size} 组 · 背诵薄弱 ${weak} 组</p><p class="small">在不同日期至少两次选择“记住”，且最近一次仍为“记住”，才计入掌握。只是揭晓、翻页不计分。评分按整组；只会其中一部分应选“模糊”。</p><p class="small">旧版93条短卡记录保持原样，不自动转换为新知识组已掌握。</p></div>`}
 function modal(title,body){const d=$('dialog');d.innerHTML=`<button class="close" aria-label="关闭">×</button><h2>${esc(title)}</h2>${body}`;d.querySelector('.close').onclick=()=>d.close();if(!d.open)d.showModal()}
-function syncData(){modal('同步数据','<button class="menu-item" id="export">导出完整备份 JSON</button><button class="menu-item" id="importButton">导入备份 JSON</button><p class="small">学习记录保存在本机浏览器。导出备份后，可在其他设备导入。</p>');$('export').onclick=exportBackup;$('importButton').onclick=()=>$('import').click()}
+// One-time computer pairing, then one tap uploads directly. Credentials never enter backups.
+const SYNC_KEY='politics_computer_sync_v1';let syncConfig=null,pairCode='',syncBusy=false,lastSyncedRevision=0;
+function connectionFrom(code){
+ const u=new URL(code.trim()),host=u.hostname,token=u.hash.slice(1),n=host.split('.').map(Number);
+ const local=host==='localhost'||(n.length===4&&n.every(v=>Number.isInteger(v)&&v>=0&&v<=255)&&(n[0]===127||n[0]===10||(n[0]===192&&n[1]===168)||(n[0]===172&&n[1]>=16&&n[1]<=31)));
+ if(!/^[0-9a-f]{64}$/.test(token)||u.username||u.password||u.search||(u.pathname&&u.pathname!=='/')||!(u.protocol==='https:'||(u.protocol==='http:'&&local)))throw Error('请粘贴电脑显示的完整连接码；HTTP只允许可信局域网地址');
+ return {base:u.origin,token};
+}
+try{const saved=JSON.parse(localStorage.getItem(SYNC_KEY)||'null');if(saved){syncConfig=connectionFrom(saved.connection);pairCode=saved.pair||''}}catch(e){}
+function saveConnection(config,pair=''){
+ localStorage.setItem(SYNC_KEY,JSON.stringify({connection:config.base+'#'+config.token,pair}));syncConfig=config;pairCode=pair;lastSyncedRevision=0;
+}
+function newId(){return globalThis.crypto?.randomUUID?.()||Date.now()+'-'+Math.random().toString(16).slice(2)}
+function progressSnapshot(){
+ let device=localStorage.getItem('politics_sync_device');if(!device){device=newId();localStorage.setItem('politics_sync_device',device)}
+ const list=Object.entries(reviews).map(([id,r])=>({card_id:id,score:r.score,review_count:r.reviewCount,last_rating:r.lastRating,last_yes_day:r.lastYesDay,due_at:r.dueAt,last_review_at:r.lastReviewAt,needs_review:!!r.needsReview,content_sig:r.contentSig||''}));
+ for(const id of wrong)if(!wrongChanges[id])wrongChanges[id]={marked:true,at:1};
+ return {kind:'politics-memory-progress',schema_version:1,request_id:newId(),device_id:device,sent_at:Date.now(),reviews:list,events,wrong_changes:wrongChanges,cursor:current()?{card_id:current().id,updated_at:app.positionAt||0}:{}};
+}
+function applyProgress(remote){
+ if(remote.kind!=='politics-memory-progress'||remote.schema_version!==1||!Array.isArray(remote.reviews)||!Array.isArray(remote.events))throw Error('电脑返回的进度格式无效');
+ for(const r of remote.reviews){const c=cards.find(c=>c.id===r.card_id);if(!c)continue;const old=reviews[r.card_id],at=Number(r.last_review_at)||0;
+  if(!old||at>old.lastReviewAt||(at===old.lastReviewAt&&r.review_count>old.reviewCount))reviews[r.card_id]={score:Math.max(0,Math.min(4,r.score)),reviewCount:r.review_count,lastRating:r.last_rating,lastYesDay:r.last_yes_day||'',lastReviewAt:at,dueAt:r.due_at,needsReview:!!r.needs_review||!!old?.needsReview,contentSig:r.content_sig||sig(c)};
+ }
+ const known=new Set(events.map(e=>e.id));for(const e of remote.events)if(e.id&&!known.has(e.id)){events.push(e);known.add(e.id)}
+ for(const [id,c] of Object.entries(remote.wrong_changes||{}))if(!wrongChanges[id]||c.at>wrongChanges[id].at){wrongChanges[id]=c;c.marked?wrong.add(id):wrong.delete(id)}
+ if(remote.cursor?.updated_at>(app.positionAt||0)){
+  const at=app.session.findIndex(c=>c.id===remote.cursor.card_id);
+  if(at>=0){app.index=at;app.positionAt=remote.cursor.updated_at}
+ }
+ if(!persist())throw Error('电脑进度已收到，但浏览器无法持久保存');
+ if(!moving)render();return remote.revision;
+}
+async function syncRequest(config,path,method='GET',body){
+ const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000);
+ try{
+  const r=await fetch(config.base+path,{method,headers:{Authorization:'Bearer '+config.token,...(body?{'Content-Type':'application/json'}:{})},body,signal:ctrl.signal,cache:'no-store',redirect:'error'});
+  if(r.status===401)throw Error('电脑连接码已失效，请长按同步重新连接');
+  if(!r.ok)throw Error('电脑未确认保存（HTTP '+r.status+'）');
+  return await r.json();
+ }finally{clearTimeout(timer)}
+}
+async function pullProgress(){
+ if(!syncConfig||syncBusy)return;
+ try{const o=await syncRequest(syncConfig,'/api/progress');if(o.revision>lastSyncedRevision)lastSyncedRevision=applyProgress(o)}catch(e){/* No false success, and no recurring popups while the computer is offline. */}
+}
+async function uploadToComputer(config=syncConfig){
+ if(syncBusy)return;syncBusy=true;toast('正在同步到电脑…');
+ try{
+  const payload=progressSnapshot(),body=JSON.stringify(payload),hash=await sha256Hex(body);
+  const ack=await syncRequest(config,'/api/progress','POST',body);
+  if(!ack.ok||ack.request_id!==payload.request_id||ack.received_sha256!==hash)throw Error('电脑保存回执不匹配');
+  if(config!==syncConfig)saveConnection(config);
+  const latest=await syncRequest(config,'/api/progress');lastSyncedRevision=applyProgress(latest);
+  if($('dialog').open)$('dialog').close();toast('已同步到电脑 · '+ack.review_count+'条学习记录');
+ }catch(e){toast('尚未同步：'+(e.name==='AbortError'?'电脑未响应':e.message)+'。请打开电脑接收器并检查同一Wi-Fi；长按同步可重新连接。')}
+ finally{syncBusy=false}
+}
+function connectComputer(){
+ if(pairCode){
+  modal('连接手机','<p class="small">电脑接收器已开启。手机与电脑连接同一可信Wi-Fi，首次在手机点击同步并粘贴下方连接码；之后一键上传，电脑页面自动更新。</p><input id="pairCode" aria-label="电脑连接码" readonly><button class="menu-item" id="copyCode">复制连接码</button>');
+  $('pairCode').value=pairCode;$('copyCode').onclick=async()=>{try{await navigator.clipboard.writeText(pairCode)}catch(e){$('pairCode').select();document.execCommand('copy')}toast('连接码已复制，请只发给自己的手机')};
+ }else{
+  modal('连接电脑','<p class="small">先在电脑打开同步接收器。两台设备连接同一可信Wi-Fi；首次粘贴连接码，之后点击同步即可上传，不再导出文件。</p><input id="connection" aria-label="电脑连接码" placeholder="粘贴电脑连接码" autocomplete="off" spellcheck="false"><button class="menu-item" id="connect">连接并同步</button>');
+  $('connection').value=syncConfig?syncConfig.base+'#'+syncConfig.token:'';
+  $('connect').onclick=()=>{try{uploadToComputer(connectionFrom($('connection').value))}catch(e){toast(e.message)}};
+ }
+}
+function syncData(){if(syncConfig)uploadToComputer();else connectComputer()}
+function bootSync(){
+ const params=new URLSearchParams(location.hash.slice(1));
+ if(params.has('sync')){
+  try{saveConnection(connectionFrom(params.get('sync')),params.get('pair')||'');history.replaceState(null,'',location.pathname+location.search);if(pairCode)connectComputer()}catch(e){toast(e.message)}
+ }
+ pullProgress();setInterval(pullProgress,2500);window.addEventListener('focus',pullProgress);
+}
+
 function sourceDetail(){const c=current();modal('本组来源',`<p>${esc(c.source||'导入资料')}</p><p class="small">${c.content_status==='VISUALLY_REORGANIZED'?'本组按苏一原图逐页阅读后重组。':'本组按既有结构化底稿和原有知识分支重组，未宣称逐字终审。'}</p>${c.source_notes?.length?'<h3>原图旁注留存（未逐字终审）</h3><p class="small warning">旁注用于对照来源，不作为已核实的老师技巧；未能准确定位的旁注按原页保留。</p>'+c.source_notes.map(n=>`<p class="source-note">${esc(n.text)}</p>`).join(''):''}<p class="small">编号：${esc(c.id)}</p>`)}
-function about(){const audioCount=Object.keys(AUDIO_INDEX.items||{}).length;modal('苏一全科 v0.8',`<p>五科共 ${cards.length} 组，依据苏一正文印刷1—135页（PDF6—140页）整理。封面、目录、封底不作为背诵卡。</p><p>印刷76—135页按原图重新整理；印刷1—75页按既有结构化底稿分组，所有已标注结构节点均已纳入分组。全科覆盖不等于全书逐字终审。</p><p>当前离线录音索引：${audioCount}/${cards.length} 组。播放前会校验正文SHA-256；倍速支持0.75×—4×。</p><p>评分保存在当前浏览器；不联网、不上传学习记录。网页与Android本地进度相互独立。</p><p class="small">原有短卡浏览器记录没有被清除；完整备份保留可读取的旧版记录。时政资料等待用户提供。</p>`)}
+function about(){const audioCount=Object.keys(AUDIO_INDEX.items||{}).length;modal('苏一全科 v0.10',`<p>五科共 ${cards.length} 组，依据苏一正文印刷1—135页（PDF6—140页）整理。封面、目录、封底不作为背诵卡。</p><p>印刷76—135页按原图重新整理；印刷1—75页按既有结构化底稿分组，所有已标注结构节点均已纳入分组。全科覆盖不等于全书逐字终审。</p><p>当前离线录音索引：${audioCount}/${cards.length} 组。播放前会校验正文SHA-256；倍速支持0.75×—4×。</p><p>学习时离线保存；首次配对电脑后，点击同步上传进度，电脑页面自动更新。未连接电脑时不会声称同步成功。</p><p class="small">原有短卡浏览器记录没有被清除；完整备份保留可读取的旧版记录。时政资料等待用户提供。</p>`)}
 function setSpeed(n){if(!SPEEDS.includes(n))return;app.speed=n;audio.playbackRate=n;audio.defaultPlaybackRate=n;persist();updatePlayer()}
-async function sha256Hex(value){if(!window.crypto?.subtle)throw Error('当前文件打开方式不支持安全校验，请通过网页预览地址打开');const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value));return [...new Uint8Array(digest)].map(x=>x.toString(16).padStart(2,'0')).join('')}
-function spokenText(c){const title=(c.title||c.path[2]||'').trim(),parts=['知识点位置。'+c.path.join('，'),'知识点名称。'+title,'问题。'+c.question.trim(),'答案。'+c.answer.trim()];if((c.notes||'').trim())parts.push('备注。'+c.notes.trim());return parts.join('\n')}
+async function sha256Hex(value){const bytes=new TextEncoder().encode(value);if(!window.crypto?.subtle)return sha256Fallback(bytes);const digest=await crypto.subtle.digest('SHA-256',bytes);return [...new Uint8Array(digest)].map(x=>x.toString(16).padStart(2,'0')).join('')}
+// SHA-256 also works on a trusted LAN http origin where SubtleCrypto is unavailable.
+function sha256Fallback(bytes){
+ const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+ const h=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19],len=bytes.length,data=new Uint8Array(Math.ceil((len+9)/64)*64);data.set(bytes);data[len]=128;
+ const view=new DataView(data.buffer);view.setUint32(data.length-8,Math.floor(len/0x20000000));view.setUint32(data.length-4,(len*8)>>>0);
+ const rotate=(x,n)=>(x>>>n)|(x<<(32-n)),w=new Uint32Array(64);
+ for(let base=0;base<data.length;base+=64){
+  for(let i=0;i<16;i++)w[i]=view.getUint32(base+4*i);
+  for(let i=16;i<64;i++){const x=w[i-15],y=w[i-2];w[i]=(w[i-16]+(rotate(x,7)^rotate(x,18)^(x>>>3))+w[i-7]+(rotate(y,17)^rotate(y,19)^(y>>>10)))>>>0}
+  let [a,b,c,d,e,f,g,z]=h;
+  for(let i=0;i<64;i++){const t1=(z+(rotate(e,6)^rotate(e,11)^rotate(e,25))+((e&f)^(~e&g))+K[i]+w[i])>>>0,t2=((rotate(a,2)^rotate(a,13)^rotate(a,22))+((a&b)^(a&c)^(b&c)))>>>0;z=g;g=f;f=e;e=(d+t1)>>>0;d=c;c=b;b=a;a=(t1+t2)>>>0}
+  [a,b,c,d,e,f,g,z].forEach((v,i)=>h[i]=(h[i]+v)>>>0);
+ }
+ return h.map(v=>v.toString(16).padStart(8,'0')).join('');
+}
+
+function spokenText(c){return (c.title||c.path[2]||'').trim()+'\n'+c.answer.trim()}
 let playList=[],playAt=0,playSource='',playToken=0,playerSeeking=false;
 async function loadTrack(paused=false){
  const token=++playToken,c=playList[playAt];if(!c)return;
@@ -91,13 +184,14 @@ async function loadTrack(paused=false){
   if(!entry||entry.file!=='audio/'+c.id+'.mp3')throw Error('本组尚无匹配录音');
   if(await sha256Hex(spokenText(c))!==entry.text_sha256)throw Error('录音与知识组不匹配');
   if(token!==playToken)return;
-  audio.pause();playingId=c.id;audio.src=(window.POLITICS_AUDIO_BASE||'')+entry.file;audio.preload='metadata';audio.playbackRate=app.speed;
+  audio.pause();playingId=c.id;if(playSource==='review'){const at=app.session.findIndex(x=>x.id===c.id);if(at>=0&&app.index!==at){app.index=at;app.positionAt=Date.now();if(app.tab==='review'){renderReview();toolbar()}persist()}}audio.src=(window.POLITICS_AUDIO_BASE||'')+entry.file;audio.preload='metadata';audio.playbackRate=app.speed;
   if(!paused)await audio.play();else audio.load();updatePlayer();
  }catch(e){if(token===playToken){audio.pause();playingId='';playList=[];playSource='';toast(e.message);updatePlayer()}}
 }
 function playQueue(list,source='catalogue',paused=false){if(!list.length)return;playList=list.slice();playAt=0;playSource=source;return loadTrack(paused)}
-function playAudioCard(c){if(c)return playQueue([c])}
-function playCurrentAudio(){return playQueue(app.session.slice(app.index),'review')}
+function rotated(list,start){return list.slice(start).concat(list.slice(0,start))}
+function playAudioCard(c){if(c)return playQueue(rotated(cards,Math.max(0,cards.findIndex(x=>x.id===c.id))))}
+function playCurrentAudio(){return playQueue(rotated(app.session,app.index),'review')}
 function toggleAudio(){if(playingId&&audio.getAttribute('src')){if(audio.paused)audio.play().catch(e=>toast(e.message));else audio.pause()}else playCurrentAudio();updatePlayer()}
 function fmtTime(s){if(!Number.isFinite(s))return '0:00';return Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0')}
 function updatePlayer(){
@@ -118,7 +212,7 @@ function updatePlayer(){
 function updateProgress(){if(!$('seek'))return;const duration=playingId&&Number.isFinite(audio.duration)?audio.duration:0,position=playingId?audio.currentTime:0;if(!playerSeeking)$('seek').value=duration?Math.round(position/duration*1000):0;$('playerTime').textContent=fmtTime(playerSeeking?Number($('seek').value)*duration/1000:position)+' / '+fmtTime(duration)}
 audio.ontimeupdate=updateProgress;audio.onplay=updatePlayer;audio.onpause=updatePlayer;audio.onloadedmetadata=updatePlayer;audio.onseeked=updateProgress;
 audio.onerror=()=>{toast('录音加载失败');updatePlayer()};
-audio.onended=()=>{if(playAt+1<playList.length){playAt++;loadTrack()}else updatePlayer()};
+audio.onended=()=>{if(playList.length){playAt=(playAt+1)%playList.length;loadTrack()}else updatePlayer()};
 function download(name,text,type){const a=document.createElement('a'),url=URL.createObjectURL(new Blob([text],{type:type||'application/json;charset=utf-8'}));a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000)}
 function exportBackup(){let legacy=null;try{legacy=JSON.parse(localStorage.getItem(LEGACY)||'null')}catch(e){}const list=Object.entries(reviews).map(([id,r])=>({card_id:id,score:r.score,review_count:r.reviewCount,last_rating:r.lastRating,last_yes_day:r.lastYesDay,due_at:r.dueAt,last_review_at:r.lastReviewAt,needs_review:!!r.needsReview,content_sig:r.contentSig}));download('政治背诵_成组备份_'+day(Date.now())+'.json',JSON.stringify({kind:'politics-memory-backup',schema_version:1,exported_at:Date.now(),packs:[{...PACK,cards}],reviews:list,events,wrong_ids:[...wrong],preferences:{goal:app.goal,speed:app.speed,show_answer:app.show},legacy_atomic_preview:legacy},null,2));toast('备份已导出')}
 function exportCSV(){const q=x=>'"'+String(x??'').replaceAll('"','""')+'"';const rows=[['id','subject','chapter','topic','title','question','answer','notes','score','review_count','last_rating','last_review_at','due_at','needs_review','wrong_question']];for(const c of cards){const r=state(c);rows.push([c.id,...c.path,c.title,c.question,c.answer,c.notes,r.score,r.reviewCount,r.lastRating,r.lastReviewAt,r.dueAt,!!r.needsReview,wrong.has(c.id)])}download('政治背诵_成组进度.csv','\ufeff'+rows.map(r=>r.map(q).join(',')).join('\r\n'),'text/csv;charset=utf-8')}
@@ -126,6 +220,6 @@ $('import').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{if(f
 document.addEventListener('keydown',e=>{if(app.tab!=='review'||$('dialog').open||e.target.closest('input,select,textarea')||e.ctrlKey||e.metaKey||e.altKey)return;if(e.code==='Space'){e.preventDefault();toggle()}else if(e.key==='ArrowLeft'){e.preventDefault();step(-1)}else if(e.key==='ArrowRight'){e.preventDefault();step(1)}else if(['1','2','3'].includes(e.key)){e.preventDefault();rate({1:'no',2:'fuzzy',3:'yes'}[e.key])}});
 $('dialog').addEventListener('click',e=>{if(e.target===$('dialog')){const r=$('dialog').getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)$('dialog').close()}});
 // Test hooks expose no network or user credentials. They exercise the same production paths.
-window.PoliticsMemory={version:9,getCards:()=>cards,getState:()=>({app,reviews,events,wrong:[...wrong]}),start:id=>{const c=cards.find(x=>x.id===id);if(c)setScope(cards.filter(x=>x.path.every((p,i)=>p===c.path[i])),c.path[2],id)},rate,toggle,step,nav,exportBackup,playCurrentAudio,toggleAudio,setSpeed,playQueue,getPlayback:()=>({playingId,source:playSource,queue:playList.map(c=>c.id),at:playAt,time:audio.currentTime,duration:audio.duration,paused:audio.paused,speed:audio.playbackRate})};
-render();
+window.PoliticsMemory={version:10,sha256Hex,sha256Fallback,spokenText,syncData,progressSnapshot,applyProgress,getCards:()=>cards,getState:()=>({app,reviews,events,wrong:[...wrong]}),start:id=>{const c=cards.find(x=>x.id===id);if(c)setScope(cards.filter(x=>x.path.every((p,i)=>p===c.path[i])),c.path[2],id)},rate,toggle,step,nav,exportBackup,playCurrentAudio,toggleAudio,setSpeed,playQueue,getPlayback:()=>({playingId,source:playSource,queue:playList.map(c=>c.id),at:playAt,time:audio.currentTime,duration:audio.duration,paused:audio.paused,speed:audio.playbackRate})};
+render();bootSync();
 })();

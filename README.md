@@ -1,3 +1,13 @@
+# PoliticsMemory 0.10 · 一键同步、精简朗读
+
+当前版本：0.10.0。完整网页与561条标题+正文录音已提交 `web-preview/`；APK与含Windows同步接收器的网页完整包在 Release `v0.10.0-sync`。操作说明见 `docs/SYNC_V010.md`，真实验收见 `docs/V010_ACCEPTANCE.json`。
+
+同步为同一可信局域网内的手机→电脑传输，首次连接一次，随后点同步直接发送；不是自动云同步。右滑下一条、左滑上一条。正文14、标题17，保留4×与首尾循环。
+
+---
+
+以下为历史版本记录：
+
 # PoliticsMemory 0.9 · 极简成组背诵
 
 完整网页：`web-preview/index.html`（包含561条录音）。Android APK 和网页完整ZIP在 Releases 的 `v0.9.0-minimal`。本次要求与验收见 `docs/MINIMAL_V09.md` 和 `docs/V09_ACCEPTANCE.json`。

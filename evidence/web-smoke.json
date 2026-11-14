@@ -1,16 +1,12 @@
 {
-  "global_loop_gestures_and_rating": "PASS",
-  "http_seek": {
-    "time": 12.996,
-    "duration": 25.992
-  },
-  "audio_scope_seek_pause_4x_sync": "PASS",
-  "file_url_offline_audio": "PASS",
-  "offline_seek": {
-    "time": 12.996,
-    "duration": 25.992
-  },
-  "responsive_layout_and_real_reopen_persistence": "PASS",
+  "right_next_left_previous_first_last_and_rating_wrap": "PASS",
+  "real_ended_autonext_and_review_follow": "PASS",
+  "audio_last_to_first_loop": "PASS",
+  "individual_play_continues_to_next": "PASS",
+  "one_tap_phone_to_computer_real_http_and_auto_refresh": "PASS",
+  "reopen_preserves_progress": "PASS",
+  "compact_fonts_and_responsive_layout": "PASS",
+  "offline_file_audio_autonext": "PASS",
   "card_count": 561,
   "browser_errors": []
 }

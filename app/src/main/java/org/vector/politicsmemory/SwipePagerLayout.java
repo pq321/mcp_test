@@ -32,6 +32,13 @@ final class SwipePagerLayout extends FrameLayout {
         current=factory.build(index);addView(current,new LayoutParams(-1,-1));
     }
     int index(){return index;}
+    /** Follow completed audio without invoking the user-swipe callback. */
+    boolean showIndex(int target){
+        if(animating||dragging||count==0)return false;
+        target=(target%count+count)%count;if(target==index)return true;
+        if(neighbor!=null){removeView(neighbor);neighbor=null;neighborIndex=-1;}
+        removeView(current);index=target;current=factory.build(index);addView(current,new LayoutParams(-1,-1));return true;
+    }
     void refresh(){
         if(animating||dragging) return;
         if(neighbor!=null){removeView(neighbor);neighbor=null;neighborIndex=-1;}

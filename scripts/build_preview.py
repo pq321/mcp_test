@@ -7,18 +7,7 @@ import shutil
 from pathlib import Path
 
 
-def spoken_text(card):
-    title = (card.get('title') or card['path'][2]).strip()
-    parts = [
-        '知识点位置。' + '，'.join(card['path']),
-        '知识点名称。' + title,
-        '问题。' + card['question'].strip(),
-        '答案。' + card['answer'].strip(),
-    ]
-    note = (card.get('notes') or '').strip()
-    if note:
-        parts.append('备注。' + note)
-    return '\n'.join(parts)
+from spoken_text import spoken_text
 
 
 def safe_json(value):
@@ -75,10 +64,12 @@ def main():
     (out / 'index.html').write_text(html, encoding='utf-8')
     (out / 'audio-index.json').write_text(json.dumps(index, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     (out / 'README.txt').write_text(
-        'PoliticsMemory v0.9 desktop preview\n'
+        'PoliticsMemory v0.10 desktop preview\n'
         'Open index.html in a modern browser. Keep the audio/ folder beside it for offline speech.\n'
-        'For browser localStorage persistence, use the same browser profile. Export a JSON backup before clearing site data.\n',
+        'One-time pairing: launch the included desktop sync receiver; paste the connection code on the phone. Then tap Sync to send progress directly to this computer. Both devices must reach the receiver (normally the same trusted Wi-Fi).\n',
         encoding='utf-8')
+    for name in ['progress_server.py','start-sync.cmd','start-sync.sh']:
+        shutil.copy2(root/'desktop'/name,out/name)
     print(f'PASS: built self-contained preview for {len(cards)} cards and {len(items)} verified audio clips')
 
 

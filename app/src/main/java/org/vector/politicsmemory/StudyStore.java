@@ -225,6 +225,11 @@ final class StudyStore extends SQLiteOpenHelper {
         SQLiteDatabase db=getWritableDatabase();
         if(marked){ContentValues v=new ContentValues();v.put("card_id",id);v.put("marked_at",System.currentTimeMillis());db.insertWithOnConflict("wrong_cards",null,v,SQLiteDatabase.CONFLICT_REPLACE);}
         else db.delete("wrong_cards","card_id=?",new String[]{id});
+        try{
+            JSONObject changes=new JSONObject(setting("wrong_sync_changes","{}"));
+            changes.put(id,new JSONObject().put("marked",marked).put("at",System.currentTimeMillis()));
+            saveSetting("wrong_sync_changes",changes.toString());
+        }catch(JSONException e){throw new IllegalStateException(e);}
     }
     ArrayList<StudyCard> wrongCards() {
         ArrayList<StudyCard> out=new ArrayList<>();for(StudyCard c:allCards())if(c.wrongQuestion)out.add(c);return out;
@@ -265,6 +270,22 @@ final class StudyStore extends SQLiteOpenHelper {
         try(Cursor c=getReadableDatabase().rawQuery("SELECT value FROM settings WHERE key=?",new String[]{key})) {
             return c.moveToFirst()?c.getString(0):fallback;
         }
+    }
+
+    /** Progress only: no materials, audio, connection credentials, or unrelated settings. */
+    JSONObject progress(String deviceId) throws JSONException {
+        JSONObject source=backup();JSONObject out=new JSONObject();
+        out.put("schema_version",1);out.put("kind","politics-memory-progress");
+        out.put("request_id",UUID.randomUUID().toString());out.put("device_id",deviceId);out.put("sent_at",System.currentTimeMillis());
+        out.put("reviews",source.getJSONArray("reviews"));out.put("events",source.getJSONArray("events"));
+        JSONObject changes=new JSONObject(setting("wrong_sync_changes","{}"));
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT card_id,marked_at FROM wrong_cards",null)){
+            while(c.moveToNext())if(!changes.has(c.getString(0)))changes.put(c.getString(0),new JSONObject().put("marked",true).put("at",c.getLong(1)));
+        }
+        out.put("wrong_changes",changes);
+        String id=setting("last_card_id","");
+        if(!id.isEmpty())out.put("cursor",new JSONObject().put("card_id",id).put("updated_at",Long.parseLong(setting("last_card_at","0"))));
+        return out;
     }
 
     /** Codex-friendly backup: a single UTF-8 JSON containing full materials and rating log. */

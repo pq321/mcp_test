@@ -1,0 +1,1 @@
+Current entry: web-preview/index.html. Source: preview/ and app/src/main/java/. Requirements: docs/SYNC_V010.md. Acceptance: docs/V010_ACCEPTANCE.json. Run desktop/progress_server.py for paired progress sync; never commit local-data/ or credentials. Do not replace the completed web product with the old source shell.

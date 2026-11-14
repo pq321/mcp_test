@@ -1,0 +1,47 @@
+{
+  "version": "0.10.0",
+  "run_id": "43598525125",
+  "source_base": "45a7827c3f14c094d6d84838fd919e1819a257d9",
+  "audio_groups": 561,
+  "speech_format": "title-answer-v1",
+  "web": {
+    "right_next_left_previous_first_last_and_rating_wrap": "PASS",
+    "real_ended_autonext_and_review_follow": "PASS",
+    "audio_last_to_first_loop": "PASS",
+    "individual_play_continues_to_next": "PASS",
+    "one_tap_phone_to_computer_real_http_and_auto_refresh": "PASS",
+    "reopen_preserves_progress": "PASS",
+    "compact_fonts_and_responsive_layout": "PASS",
+    "offline_file_audio_autonext": "PASS",
+    "card_count": 561,
+    "browser_errors": []
+  },
+  "android": {
+    "right_next_left_previous_first_last_loop": "PASS",
+    "real_4x_pause_seek_and_automatic_next": "PASS",
+    "audio_next_updates_review_without_rating": "PASS",
+    "android_one_tap_authenticated_upload_to_computer": "PASS",
+    "sync_confirmation_requires_durable_receipt": "PASS",
+    "offline_receiver_does_not_show_success": "PASS",
+    "player_survives_tab_switch": "PASS",
+    "display": "1080x2340, emulator density 480 and 440; not physical OPPO K5"
+  },
+  "receiver": {
+    "authenticated_http_upload": "PASS",
+    "durable_reopen": "PASS",
+    "stale_and_duplicate_preservation": "PASS",
+    "wrong_question_removal": "PASS",
+    "no_secrets_in_progress": "PASS",
+    "scope": "Synthetic records over real HTTP; not user personal devices"
+  },
+  "windows_receiver": "actual executable health check passed in dependent job",
+  "sha256": {
+    "app/build/outputs/apk/debug/app-debug.apk": "8d2e1650f4ea3dd7830958a266dababf8fd6956c8f6d740936f99a7a486a8e68",
+    "site/PoliticsMemory-Sync.exe": "4b0e3d203fcbdee9763493b67d4f30b4e34a11c6dfcf22d7bf4af2c0799b4514",
+    "web-preview/index.html": "8d1566f0af3e215769c47ab6ed3f573291bf0412d5caf8e40b9f2ecd033c32f7",
+    "web-preview/audio-index.json": "cea8bdb6bb78cf6ecf86684922ff4a7b8ed1dc92ebd5ced823022fa12a863874",
+    "preview/app.js": "adf780e4eb47f0df37b2742d7d6804250abf284d89ac54e694eb53a961e9cac3",
+    "preview/app.css": "2000bf4664740f4929cb4c3248f37c6956c4d2f9e6f6148c52b615099cd3a7f5",
+    "data/suyi-full.json": "20b2236109e35b69244b7826da3e239a67b4f735e54f84977b5a6af0fa73d9e4"
+  }
+}

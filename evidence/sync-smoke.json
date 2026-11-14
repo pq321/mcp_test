@@ -1,0 +1,8 @@
+{
+  "authenticated_http_upload": "PASS",
+  "durable_reopen": "PASS",
+  "stale_and_duplicate_preservation": "PASS",
+  "wrong_question_removal": "PASS",
+  "no_secrets_in_progress": "PASS",
+  "scope": "Synthetic records over real HTTP; not user personal devices"
+}

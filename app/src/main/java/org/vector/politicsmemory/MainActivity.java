@@ -39,7 +39,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** Single offline Activity, platform views, no ad SDK, network access or WebView. */
+/** Platform views and offline audio; network is used only for explicit paired progress uploads. */
 public final class MainActivity extends Activity {
     private static final int TEAL=Color.rgb(54,172,157), ORANGE=Color.rgb(220,105,65);
     private static final int DARK=Color.rgb(49,54,55), MUTED=Color.rgb(130,136,138);
@@ -51,7 +51,8 @@ public final class MainActivity extends Activity {
     private android.widget.SeekBar playerSeek;
     private TextView playerPlay,playerTime,playerSpeedLabel,playerTitle;
     private final android.os.Handler playerHandler=new android.os.Handler(android.os.Looper.getMainLooper());
-    private boolean seeking=false;
+    private boolean seeking=false,syncBusy=false;
+    private long observedTrack=-1;
     private FrameLayout content;
     private int currentTab=1;
     private boolean showAnswer=false;
@@ -73,9 +74,16 @@ public final class MainActivity extends Activity {
         switchTab(1);
         // Install or upgrade the bundled Su Yi heading map; never delete local ratings.
         new Thread(()->{
-            try{store.installStarterOnce();runOnUiThread(()->switchTab(1));}
+            try{store.installStarterOnce();runOnUiThread(()->{switchTab(1);restoreOpenedBackup(getIntent());});}
             catch(Exception e){runOnUiThread(()->error("内置素材初始化失败："+e.getMessage()));}
         }).start();
+    }
+    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);restoreOpenedBackup(intent);}
+    private void restoreOpenedBackup(Intent intent){
+        if(intent==null||!Intent.ACTION_VIEW.equals(intent.getAction())||intent.getData()==null||!"content".equals(intent.getData().getScheme()))return;
+        setIntent(new Intent(this,MainActivity.class));
+        new AlertDialog.Builder(this).setTitle("恢复备份").setMessage("合并这份JSON备份，保留较新的学习记录，不删除现有进度。").setNegativeButton("取消",null)
+            .setPositiveButton("导入",(d,w)->onActivityResult(IMPORT,RESULT_OK,intent)).show();
     }
     @Override protected void onDestroy(){playerHandler.removeCallbacks(playerTicker);store.close();super.onDestroy();}
     private int parseGoal(String v){try{int k=Integer.parseInt(v);return Math.max(5,Math.min(100,k));}catch(Exception e){return 25;}}
@@ -134,6 +142,12 @@ public final class MainActivity extends Activity {
     }
     private void refreshPlayerBar(){
         if(playerBar==null)return;boolean active=SpeechService.active;
+        if(active&&SpeechService.followReview&&currentTab==0&&pager!=null&&observedTrack!=SpeechService.currentTrackSerial&&!SpeechService.currentCardId.isEmpty()
+                &&!session.get(pager.index()).id.equals(SpeechService.currentCardId)){
+            for(int n=0;n<session.size();n++)if(session.get(n).id.equals(SpeechService.currentCardId)){
+                if(pager.showIndex(n)){observedTrack=SpeechService.currentTrackSerial;store.saveSetting("last_card_id",session.get(n).id);store.saveSetting("last_card_at",Long.toString(System.currentTimeMillis()));}break;
+            }
+        }
         int visibility=active||currentTab==0?View.VISIBLE:View.GONE;
         if(playerBar.getVisibility()!=visibility)playerBar.setVisibility(visibility);
         if(visibility!=View.VISIBLE)return;
@@ -174,15 +188,39 @@ public final class MainActivity extends Activity {
         TextView t=text(title,22,DARK,false);bar.addView(t,new LinearLayout.LayoutParams(0,-2,1));
         if(menu){
             TextView button=text("同步",13,TEAL,true);padding(button,10,4,5,4);
-            button.setOnClickListener(v->showFileMenu());bar.addView(button);
+            button.setOnClickListener(v->showFileMenu());button.setOnLongClickListener(v->{connectComputer();return true;});bar.addView(button);
         }
         return bar;
     }
     private void showFileMenu(){
-        String[] items={"导出备份","导入备份"};
-        new AlertDialog.Builder(this).setTitle("同步数据").setItems(items,(d,which)->{
-            if(which==0)chooseExport(false);else chooseImport();
-        }).show();
+        String connection=ProgressSync.saved(this);
+        if(connection.isEmpty())connectComputer();else uploadProgress(connection);
+    }
+    private void connectComputer(){
+        LinearLayout body=column();padding(body,22,6,22,6);
+        body.addView(text("电脑先打开同步接收器；手机与电脑连接同一可信Wi-Fi。首次粘贴连接码，之后点同步即可上传。",12,MUTED,false));
+        EditText input=new EditText(this);input.setTextSize(12);input.setSingleLine(true);input.setHint("粘贴电脑连接码");input.setContentDescription("电脑连接码");
+        input.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD|android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        input.setText(ProgressSync.saved(this));body.addView(input,lp(-1,48));
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("连接电脑").setView(body).setNegativeButton("取消",null).setPositiveButton("连接并同步",null).create();
+        dialog.setOnShowListener(v->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(x->{
+            String code=input.getText().toString().trim();
+            try{ProgressSync.parse(code);dialog.dismiss();uploadProgress(code);}catch(Exception e){input.setError(e.getMessage());}
+        }));dialog.show();
+    }
+    private void uploadProgress(String connection){
+        if(syncBusy)return;syncBusy=true;Toast.makeText(this,"正在同步到电脑…",Toast.LENGTH_SHORT).show();
+        Context app=getApplicationContext();
+        new Thread(()->{
+            String failure=null;int count=0;
+            try{count=ProgressSync.upload(app,connection);}catch(Exception e){failure=e.getMessage();}
+            final String errorMessage=failure;final int sent=count;
+            runOnUiThread(()->{syncBusy=false;if(isFinishing()||isDestroyed())return;
+                if(errorMessage==null)Toast.makeText(this,"已同步到电脑 · "+sent+"条学习记录",Toast.LENGTH_LONG).show();
+                else new AlertDialog.Builder(this).setTitle("尚未同步到电脑").setMessage("手机进度仍保留。请确认电脑接收器已打开、两台设备在同一可信Wi-Fi。\n\n"+errorMessage)
+                    .setPositiveButton("重试",(d,w)->uploadProgress(connection)).setNeutralButton("重新连接",(d,w)->connectComputer()).setNegativeButton("关闭",null).show();
+            });
+        },"progress-upload").start();
     }
     private float speechSpeed(){
         try{return Math.max(0.75f,Math.min(4f,Float.parseFloat(store.setting("speech_speed","1.0"))));}
@@ -217,11 +255,18 @@ public final class MainActivity extends Activity {
         i.putExtra(SpeechService.EXTRA_SPEED,speechSpeed());
         launchSpeech(i);
     }
+    private void startFromCard(StudyCard c){
+        ArrayList<StudyCard> all=store.allCards();int at=0;
+        for(int n=0;n<all.size();n++)if(all.get(n).id.equals(c.id)){at=n;break;}
+        ArrayList<StudyCard> rotated=new ArrayList<>();
+        for(int n=0;n<all.size();n++)rotated.add(all.get((at+n)%all.size()));
+        startContinuousSpeech(rotated);
+    }
     private void startReviewSpeech(int position){startReviewSpeech(position,false);}
     private void startReviewSpeech(int position,boolean paused){
         if(session.isEmpty())return;
         Intent i=new Intent(this,SpeechService.class);i.setAction(SpeechService.PLAY);
-        ArrayList<String> ids=new ArrayList<>();for(int j=position;j<session.size();j++)ids.add(session.get(j).id);
+        ArrayList<String> ids=new ArrayList<>();for(int j=0;j<session.size();j++)ids.add(session.get((position+j)%session.size()).id);
         i.putStringArrayListExtra(SpeechService.EXTRA_IDS,ids);i.putExtra(SpeechService.EXTRA_SPEED,speechSpeed());
         i.putExtra(SpeechService.EXTRA_REVIEW,true);i.putExtra(SpeechService.EXTRA_PAUSED,paused);launchSpeech(i);
     }
@@ -240,7 +285,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);
         content.addView(scroll);LinearLayout body=column();padding(body,13,3,13,25);scroll.addView(body);
         body.addView(titleBar("资料",true));
-        EditText search=new EditText(this);search.setSingleLine(true);search.setTextSize(16);
+        EditText search=new EditText(this);search.setSingleLine(true);search.setTextSize(14);
         search.setHint("⌕  搜索知识点 / 考点");search.setGravity(Gravity.CENTER_VERTICAL);
         search.setBackground(bg(WHITE,8));padding(search,16,7,10,7);
         search.setText(catalogueFilter);body.addView(search,lp(-1,48));
@@ -298,7 +343,7 @@ public final class MainActivity extends Activity {
                     for(StudyCard c:tCards){
                         LinearLayout leaf=column();padding(leaf,30,0,0,0);
                         LinearLayout leafRow=row();TextView leafTitle=text(c.displayTitle(),13,DARK,false);leafTitle.setOnClickListener(v->startScoped(store.allCards(),topic.getKey(),c.id));leafRow.addView(leafTitle,new LinearLayout.LayoutParams(0,-2,1));
-                        TextView play=playButton(()->startContinuousSpeech(Collections.singletonList(c)));leafRow.addView(play);leaf.addView(leafRow);
+                        TextView play=playButton(()->startFromCard(c));leafRow.addView(play);leaf.addView(leafRow);
 
                         if(c.wrongQuestion)leaf.addView(text("做题错题",9,ORANGE,true));
                         leaves.addView(leaf);
@@ -352,7 +397,7 @@ public final class MainActivity extends Activity {
         for(StudyCard c:found){
             LinearLayout item=column();item.setBackground(bg(WHITE,8));padding(item,12,10,12,10);
             LinearLayout r=row();TextView title=text(c.displayTitle(),14,DARK,false);
-            title.setOnClickListener(v->startScoped(all,"搜索结果",c.id));r.addView(title,new LinearLayout.LayoutParams(0,-2,1));r.addView(playButton(()->startContinuousSpeech(Collections.singletonList(c))));item.addView(r);
+            title.setOnClickListener(v->startScoped(all,"搜索结果",c.id));r.addView(title,new LinearLayout.LayoutParams(0,-2,1));r.addView(playButton(()->startFromCard(c)));item.addView(r);
             item.addView(text(c.subject+" · "+c.chapter+" · "+c.topic,11,MUTED,false));
             parent.addView(item);spacer(parent,2);
         }
@@ -432,12 +477,12 @@ public final class MainActivity extends Activity {
         if(session.isEmpty())return;
         content.removeAllViews();
         pager=new SwipePagerLayout(this,session.size(),start,this::makeStudyPage,index->{
-            store.saveSetting("last_card_id",session.get(index).id);
-            if(SpeechService.active&&SpeechService.followReview)startReviewSpeech(index,SpeechService.paused);
+            store.saveSetting("last_card_id",session.get(index).id);store.saveSetting("last_card_at",Long.toString(System.currentTimeMillis()));
+            if(SpeechService.active&&SpeechService.followReview){observedTrack=SpeechService.currentTrackSerial;startReviewSpeech(index,SpeechService.paused);}
             refreshPlayerBar();
         });
         content.addView(pager,new FrameLayout.LayoutParams(-1,-1));
-        store.saveSetting("last_card_id",session.get(start).id);
+        store.saveSetting("last_card_id",session.get(start).id);store.saveSetting("last_card_at",Long.toString(System.currentTimeMillis()));
     }
     private View makeStudyPage(int index){
         StudyCard card=session.get(index);LinearLayout page=column();page.setBackgroundColor(WHITE);
@@ -445,16 +490,16 @@ public final class MainActivity extends Activity {
         TextView back=text("‹",28,MUTED,false);back.setContentDescription("返回资料");back.setGravity(Gravity.CENTER);bar.addView(back,lp(36,42));back.setOnClickListener(v->switchTab(1));
         TextView counter=text((index+1)+" / "+session.size(),11,MUTED,false);bar.addView(counter,new LinearLayout.LayoutParams(0,-2,1));
         TextView reveal=text(showAnswer?"收起":"揭晓",12,TEAL,false);padding(reveal,8,8,8,8);bar.addView(reveal);reveal.setOnClickListener(v->toggleAnswer());
-        TextView sync=text("同步",12,MUTED,false);padding(sync,8,8,8,8);bar.addView(sync);sync.setOnClickListener(v->showFileMenu());page.addView(bar);
+        TextView sync=text("同步",12,MUTED,false);padding(sync,8,8,8,8);bar.addView(sync);sync.setOnClickListener(v->showFileMenu());sync.setOnLongClickListener(v->{connectComputer();return true;});page.addView(bar);
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);page.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         LinearLayout body=column();padding(body,21,8,21,22);scroll.addView(body);
         body.addView(text(card.subject+" › "+card.chapter+" › "+card.topic,10,MUTED,false));spacer(body,9);
-        TextView title=text(card.displayTitle(),19,DARK,true);body.addView(title);spacer(body,7);
+        TextView title=text(card.displayTitle(),17,DARK,true);body.addView(title);spacer(body,7);
         title.setOnLongClickListener(v->{store.setWrong(card.id,!card.wrongQuestion);card.wrongQuestion=!card.wrongQuestion;Toast.makeText(this,card.wrongQuestion?"已加入错题":"已移出错题",Toast.LENGTH_SHORT).show();return true;});
-        TextView question=text(card.question,12,0xff778282,false);question.setLineSpacing(dp(2),1.15f);body.addView(question);spacer(body,14);
+        TextView question=text(card.question,11,0xff778282,false);question.setLineSpacing(dp(2),1.15f);body.addView(question);spacer(body,14);
         View divider=new View(this);divider.setBackgroundColor(0xffe9eceb);body.addView(divider,lp(-1,1));spacer(body,15);
         if(showAnswer){
-            TextView answer=text(card.answer,16,DARK,false);answer.setLineSpacing(dp(5),1.12f);answer.setOnClickListener(v->toggleAnswer());body.addView(answer);
+            TextView answer=text(card.answer,14,DARK,false);answer.setLineSpacing(dp(3),1.10f);answer.setOnClickListener(v->toggleAnswer());body.addView(answer);
             if(card.notes!=null&&!card.notes.trim().isEmpty()){spacer(body,13);TextView note=text(card.notes,9,0xffb54444,false);body.addView(note);}
         }else{
             TextView hint=text("先回忆，再点击揭晓",13,0xffa1a7a7,false);hint.setGravity(Gravity.CENTER);body.addView(hint,lp(-1,190));hint.setOnClickListener(v->toggleAnswer());

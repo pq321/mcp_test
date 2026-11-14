@@ -15,19 +15,7 @@ import wave
 import zipfile
 
 
-def spoken_text(card):
-    path = '，'.join(card['path'])
-    title = (card.get('title') or card['path'][2]).strip()
-    parts = [
-        '知识点位置。' + path,
-        '知识点名称。' + title,
-        '问题。' + card['question'].strip(),
-        '答案。' + card['answer'].strip(),
-    ]
-    note = (card.get('notes') or '').strip()
-    if note:
-        parts.append('备注。' + note)
-    return '\n'.join(parts)
+from spoken_text import spoken_text
 
 
 def text_hash(card):
@@ -42,7 +30,8 @@ def render_pack(args):
     audio_dir = Path(args.out) / 'audio'
     audio_dir.mkdir(parents=True, exist_ok=True)
     voice = PiperVoice.load(args.model)
-    manifest = {'schema_version': 1, 'pack_id': root['pack_id'], 'generator': 'piper-tts:zh_CN-chaowen-medium', 'items': {}}
+    manifest = {'schema_version': 1, 'pack_id': root['pack_id'], 'generator': 'piper-tts:zh_CN-chaowen-medium',
+        'speech_format': 'title-answer-v1', 'items': {}}
     failures=[]
     for n, card in enumerate(cards,1):
         item_id = card['id']

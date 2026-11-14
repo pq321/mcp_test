@@ -34,12 +34,7 @@ final class AudioCatalog {
     }
     static String spokenText(StudyCard c){
         String title=c.title==null||c.title.trim().isEmpty()?c.topic:c.title.trim();
-        StringBuilder s=new StringBuilder();
-        s.append("知识点位置。").append(c.subject).append('，').append(c.chapter).append('，').append(c.topic)
-         .append("\n知识点名称。").append(title).append("\n问题。").append(c.question.trim())
-         .append("\n答案。").append(c.answer.trim());
-        if(c.notes!=null&&!c.notes.trim().isEmpty())s.append("\n备注。").append(c.notes.trim());
-        return s.toString();
+        return title+"\n"+c.answer.trim();
     }
     static String contentHash(StudyCard c){return digest(spokenText(c).getBytes(StandardCharsets.UTF_8));}
     static String digest(byte[] value){

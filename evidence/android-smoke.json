@@ -1,6 +1,10 @@
 {
-  "global_loop_and_rating_wrap": "PASS",
-  "real_media_4x_pause_and_seek": "PASS",
+  "right_next_left_previous_first_last_loop": "PASS",
+  "real_4x_pause_seek_and_automatic_next": "PASS",
+  "audio_next_updates_review_without_rating": "PASS",
+  "android_one_tap_authenticated_upload_to_computer": "PASS",
+  "sync_confirmation_requires_durable_receipt": "PASS",
+  "offline_receiver_does_not_show_success": "PASS",
   "player_survives_tab_switch": "PASS",
-  "display": "1080x2340, emulator density 480 and 440; not physical OPPO hardware"
+  "display": "1080x2340, emulator density 480 and 440; not physical OPPO K5"
 }

@@ -16,3 +16,9 @@ site/
 audio-shards/
 preview/audio/
 app/src/main/assets/suyi-full.json
+
+# Local progress and receiver credentials never belong in Git.
+local-data/
+**/local-data/
+__pycache__/
+*.pyc
