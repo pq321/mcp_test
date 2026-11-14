@@ -1,63 +1,149 @@
-name: Generate grouped offline audio
+name: Build and deploy PoliticsMemory v0.8
 on:
   push:
-    paths: ['.github/workflows/grouped-audio.yml']
+    branches: [main]
+    paths:
+      - 'data/suyi-full.json'
+      - 'app/**'
+      - 'preview/**'
+      - 'scripts/**'
+      - 'docs/**'
+      - '.github/workflows/grouped-audio.yml'
   workflow_dispatch:
 permissions:
   contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: politics-memory-release
+  cancel-in-progress: false
 jobs:
   audio:
+    name: Generate audio shard ${{ matrix.shard }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
       fail-fast: false
+      max-parallel: 5
       matrix:
-        shard: [0, 1, 2, 3, 4, 5]
+        shard: [0, 1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Prepare one subject without changing its content
+      - uses: actions/cache@v4
+        with:
+          path: .voice-cache
+          key: piper-zh-cn-chaowen-medium-v1
+      - name: Install Piper and ffmpeg
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'piper-tts[zh]==1.8.0'
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+      - name: Download CC0 Mandarin voice (CI only)
+        run: |
+          mkdir -p .voice-cache
+          BASE='https://huggingface.co/rhasspy/piper-voices/resolve/a60bfb1358818a92675b3a2d9d48fb8ea47035c1/zh/zh_CN/chaowen/medium/zh_CN-chaowen-medium.onnx'
+          if [ ! -s .voice-cache/zh_CN-chaowen-medium.onnx ] || [ ! -s .voice-cache/zh_CN-chaowen-medium.onnx.json ]; then
+            curl -fL --retry 4 --connect-timeout 15 "$BASE" -o .voice-cache/zh_CN-chaowen-medium.onnx
+            curl -fL --retry 4 --connect-timeout 15 "$BASE.json" -o .voice-cache/zh_CN-chaowen-medium.onnx.json
+          fi
+          test "$(stat -c%s .voice-cache/zh_CN-chaowen-medium.onnx)" -gt 10000000
+          echo '820d64ac16048fbcf38dd0823d37fab5f5e0c2bd71b01ca5a50f553fac19e746  .voice-cache/zh_CN-chaowen-medium.onnx' | sha256sum -c -
+      - name: Select subject shard
         env:
           SHARD: ${{ matrix.shard }}
         run: |
           python - <<'PY'
-          import json,os,pathlib
-          i=int(os.environ['SHARD'])
-          path='data/suyi-full.json' if i<5 else 'data/starter-sixiu-k.json'
-          p=json.loads(pathlib.Path(path).read_text())
-          if i<5:p['cards']=[c for c in p['cards'] if c['path'][0]==['马原','毛中特','新思想','史纲','思修'][i]]
-          assert p['cards']
-          pathlib.Path('subject.json').write_text(json.dumps(p,ensure_ascii=False))
-          print(i,len(p['cards']))
+          import json, os
+          from pathlib import Path
+          source=json.loads(Path('data/suyi-full.json').read_text(encoding='utf-8'))
+          subjects=['马原','毛中特','新思想','史纲','思修']
+          subject=subjects[int(os.environ['SHARD'])]
+          pack={**source,'title':source['title']+' · '+subject,'cards':[c for c in source['cards'] if c['path'][0]==subject]}
+          if not pack['cards']:
+              raise SystemExit('empty subject shard: '+subject)
+          Path('subject.json').write_text(json.dumps(pack,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print(subject,len(pack['cards']))
           PY
-      - name: Install build-time voice tools
-        run: |
-          python -m pip install 'piper-tts[zh]==1.8.0'
-          sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg
-      - uses: actions/cache@v4
-        with:
-          path: .voice-cache
-          key: piper-chaowen-medium-v1
-      - name: Obtain synthesis model on build host only
-        run: |
-          mkdir -p .voice-cache
-          BASE='https://huggingface.co/rhasspy/piper-voices/resolve/main/zh/zh_CN/chaowen/medium/zh_CN-chaowen-medium.onnx'
-          test -s .voice-cache/zh_CN-chaowen-medium.onnx || curl -fL --retry 4 "$BASE" -o .voice-cache/zh_CN-chaowen-medium.onnx
-          test -s .voice-cache/zh_CN-chaowen-medium.onnx.json || curl -fL --retry 4 "$BASE.json" -o .voice-cache/zh_CN-chaowen-medium.onnx.json
-      - name: Render and validate every assigned full answer
-        env:
-          OMP_NUM_THREADS: '2'
+      - name: Generate and validate full-group MP3
         run: |
           python scripts/generate_audio.py --pack subject.json --model .voice-cache/zh_CN-chaowen-medium.onnx --out generated
           python scripts/validate_audio.py subject.json generated
-          cp subject.json generated/pack.json
       - uses: actions/upload-artifact@v4
         with:
           name: grouped-audio-${{ matrix.shard }}
           path: generated/
-          compression-level: 0
-          retention-days: 30
           if-no-files-found: error
+          compression-level: 0
+
+  release:
+    name: Build APK and desktop web preview
+    needs: audio
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download all subject audio shards
+        uses: actions/download-artifact@v4
+        with:
+          pattern: grouped-audio-*
+          path: audio-shards
+          merge-multiple: false
+      - name: Merge and verify all 561 audio clips
+        run: |
+          python scripts/merge_audio_shards.py --pack data/suyi-full.json --shards audio-shards --out app/src/main/assets
+          python scripts/validate_audio.py data/suyi-full.json app/src/main/assets
+          cp data/suyi-full.json app/src/main/assets/suyi-full.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Install Android SDK platform
+        run: |
+          SDK_MANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
+          test -n "$SDK_MANAGER"
+          yes | "$SDK_MANAGER" --licenses >/dev/null
+          "$SDK_MANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Validate pack and assemble offline APK
+        run: |
+          python scripts/validate_pack.py data/suyi-full.json
+          gradle --no-daemon --stacktrace :app:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: politics-memory-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          compression-level: 0
+      - name: Build self-contained desktop preview
+        run: |
+          python scripts/build_preview.py --pack data/suyi-full.json --audio-index app/src/main/assets/audio-index.json --audio-dir app/src/main/assets/audio --out site
+      - uses: actions/upload-artifact@v4
+        with:
+          name: politics-memory-web-preview
+          path: site/
+          if-no-files-found: error
+          compression-level: 0
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
