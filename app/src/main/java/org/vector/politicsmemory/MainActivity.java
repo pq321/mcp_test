@@ -260,7 +260,7 @@ public final class MainActivity extends Activity {
                     LinearLayout leaves=column();leaves.setVisibility(tExpanded?View.VISIBLE:View.GONE);
                     for(StudyCard c:tCards){
                         LinearLayout leaf=column();padding(leaf,36,5,9,6);
-                        LinearLayout leafRow=row();TextView leafTitle=text(c.displayTitle(),13,DARK,true);leafRow.addView(leafTitle,new LinearLayout.LayoutParams(0,-2,1));
+                        LinearLayout leafRow=row();TextView leafTitle=text(c.displayTitle(),13,DARK,true);leafTitle.setOnClickListener(v->startScoped(store.allCards(),topic.getKey(),c.id));leafRow.addView(leafTitle,new LinearLayout.LayoutParams(0,-2,1));
                         TextView play=playButton(()->startContinuousSpeech(Collections.singletonList(c)));leafRow.addView(play);leaf.addView(leafRow);
                         TextView recall=text(c.question,11.5f,MUTED,false);recall.setMaxLines(2);
                         recall.setEllipsize(android.text.TextUtils.TruncateAt.END);leaf.addView(recall);
