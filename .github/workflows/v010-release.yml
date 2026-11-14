@@ -1,0 +1,193 @@
+name: PoliticsMemory 0.10 release
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/v010-release.yml', 'source/v010-*.b64', 'scripts/v010_followup.py', 'scripts/publish_v010.py']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: politics-v010-release
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python scripts/apply_v010_transfer.py
+      - name: Export exact candidate source for inspection
+        shell: python
+        run: |
+          import zipfile
+          from pathlib import Path
+          with zipfile.ZipFile('candidate.zip','w',zipfile.ZIP_DEFLATED) as z:
+              for folder in ['app/src/main/java','preview','desktop','qa','scripts','docs']:
+                  for p in Path(folder).rglob('*'):
+                      if p.is_file() and p.suffix not in ['.mp3','.pyc'] and 'preview/audio/' not in p.as_posix():z.write(p,p.as_posix())
+              for p in ['app/build.gradle','app/src/main/AndroidManifest.xml','.gitignore']:z.write(p,p)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v010-candidate-source
+          path: candidate.zip
+          retention-days: 14
+      - name: Build standalone Windows receiver
+        run: |
+          python -m pip install pyinstaller
+          python -m PyInstaller --clean --onefile --name PoliticsMemory-Sync desktop/progress_server.py
+      - name: Test actual Windows executable
+        shell: python
+        run: |
+          import subprocess,tempfile,time,json,urllib.request
+          from pathlib import Path
+          with tempfile.TemporaryDirectory() as d:
+              root=Path(d);(root/'index.html').write_text('<p>receiver acceptance</p>')
+              proc=subprocess.Popen(['dist/PoliticsMemory-Sync.exe','--root',d,'--data-dir',str(root/'state'),'--port','18766','--no-browser'])
+              try:
+                  for _ in range(60):
+                      try:
+                          token=json.loads((root/'state/sync-config.json').read_text())['token']
+                          req=urllib.request.Request('http://127.0.0.1:18766/api/health',headers={'Authorization':'Bearer '+token})
+                          assert json.load(urllib.request.urlopen(req,timeout=2))['service']=='politics-memory-sync'
+                          print('PASS: Windows executable listener and credential creation');break
+                      except (OSError,ValueError):time.sleep(.25)
+                  else:raise RuntimeError('Windows receiver did not become ready')
+              finally:proc.terminate();proc.wait(timeout=10)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: politics-v010-windows-receiver
+          path: dist/PoliticsMemory-Sync.exe
+          retention-days: 14
+  release:
+    needs: windows
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply source and check actual progress transfer
+        run: |
+          python scripts/apply_v010_transfer.py
+          node --check preview/app.js
+          python -m py_compile desktop/progress_server.py scripts/*.py qa/*.py
+          python scripts/validate_pack.py data/suyi-full.json
+          python qa/progress_smoke.py
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: grouped-audio-*
+          path: shards
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 43594801391
+      - name: Build complete web with title and answer recordings
+        run: |
+          python scripts/merge_audio_shards.py --pack data/suyi-full.json --shards shards --out generated-audio
+          python scripts/validate_audio.py data/suyi-full.json generated-audio
+          mkdir -p app/src/main/assets/audio
+          cp data/suyi-full.json app/src/main/assets/suyi-full.json
+          cp generated-audio/audio-index.json app/src/main/assets/audio-index.json
+          cp generated-audio/audio/*.mp3 app/src/main/assets/audio/
+          python scripts/build_preview.py --pack data/suyi-full.json --audio-index generated-audio/audio-index.json --audio-dir generated-audio/audio --out site
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          index=json.loads(Path('generated-audio/audio-index.json').read_text())
+          Path('preview/audio-index.js').write_text('window.POLITICS_AUDIO_INDEX='+json.dumps(index,ensure_ascii=False,separators=(',',':'))+';\n',encoding='utf-8')
+          scripts={}
+          for p in Path('shards').glob('grouped-audio-*/spoken-texts.json'):scripts.update(json.loads(p.read_text()))
+          assert len(scripts)==561
+          Path('generated-audio/spoken-texts.json').write_text(json.dumps(scripts,ensure_ascii=False,indent=2)+'\n')
+          PY
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: politics-memory-debug-signing-v1
+      - run: gradle --no-daemon :app:assembleDebug
+      - name: Real browser and cross-device sync
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+          python qa/web_smoke.py
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Installed Android gestures autoplay and sync
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: |
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            python qa/android_smoke.py || (adb logcat -d > evidence/android-logcat.txt; adb exec-out screencap -p > evidence/android-failure.png; exit 1)
+      - uses: actions/download-artifact@v4
+        with:
+          name: politics-v010-windows-receiver
+          path: site
+      - name: Commit accepted product
+        id: accepted
+        run: |
+          set -euo pipefail
+          python scripts/publish_v010.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .gitignore app/build.gradle app/src/main/AndroidManifest.xml app/src/main/java desktop preview scripts/*.py qa/*.py docs/SYNC_V010.md docs/V010_ACCEPTANCE.json docs/CODEX_V010.md web-preview README.md evidence/*.png evidence/*-smoke.json
+          if compgen -G 'source/v010-*.b64' >/dev/null; then git rm source/v010-*.b64; fi
+          git diff --cached --quiet || git commit -m 'release: verified v0.10 sync title-body audio and right-next gestures [skip ci]'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Publish full APK and desktop web receiver
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p deliverables
+          cp app/build/outputs/apk/debug/app-debug.apk deliverables/PoliticsMemory-v0.10.0.apk
+          (cd site && zip -q -r ../deliverables/PoliticsMemory-v0.10.0-web.zip .)
+          (cd evidence && zip -q -r ../deliverables/PoliticsMemory-v0.10.0-evidence.zip .)
+          (cd deliverables && sha256sum * > SHA256SUMS.txt)
+          gh release create v0.10.0-sync deliverables/* --target '${{ steps.accepted.outputs.sha }}' --title 'PoliticsMemory 0.10 — one-tap sync and continuous title-body audio' --notes-file docs/SYNC_V010.md
+      - name: Capture inspection evidence even on failure
+        if: always()
+        run: |
+          python - <<'PY'
+          import zipfile
+          from pathlib import Path
+          with zipfile.ZipFile('inspection.zip','w',zipfile.ZIP_DEFLATED) as z:
+              for folder in ['app/src/main/java','preview','desktop','qa','scripts','docs','evidence']:
+                  for p in Path(folder).rglob('*'):
+                      if p.is_file() and p.suffix not in ['.mp3','.pyc'] and 'preview/audio/' not in str(p):z.write(p,str(p))
+              for p in ['app/build.gradle','app/src/main/AndroidManifest.xml']:z.write(p,p)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v010-inspection
+          path: inspection.zip
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: v010-deliverables
+          path: deliverables/
+          compression-level: 0
+          retention-days: 14
