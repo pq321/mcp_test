@@ -1,0 +1,38 @@
+name: Apply PoliticsMemory v0.8 source patch
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'source/v08-patch-*.b64'
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: "${{ github.event.head_commit.message != 'chore: apply PoliticsMemory v0.8 patch' }}"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reassemble and apply source patch
+        run: |
+          set -euo pipefail
+          test -s source/v08-patch-00.b64
+          cat source/v08-patch-*.b64 > source/v08-patch.b64
+          base64 -d source/v08-patch.b64 > source/v08-patch.zip
+          unzip -o source/v08-patch.zip -d .
+          python scripts/validate_pack.py data/suyi-full.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          pack=json.loads(Path('data/suyi-full.json').read_text(encoding='utf-8'))
+          js='window.POLITICS_PACK = '+json.dumps(pack,ensure_ascii=False,separators=(',',':'))+';\\n'
+          Path('preview/full-data.js').write_text(js,encoding='utf-8')
+          print('Prepared',len(pack['cards']),'groups')
+          PY
+          rm -f source/v08-patch-*.b64 source/v08-patch.b64 source/v08-patch.zip
+      - name: Commit v0.8 source
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --quiet || git commit -m 'chore: apply PoliticsMemory v0.8 patch'
+          git push
