@@ -19,6 +19,9 @@ jobs:
           cat source/v08-patch-*.b64 > source/v08-patch.b64
           base64 -d source/v08-patch.b64 > source/v08-patch.zip
           unzip -o source/v08-patch.zip -d .
+          # GitHub App workflow-file permission is not available to GITHUB_TOKEN.
+          # Keep workflow YAML updates for the connected GitHub API, not this runner token.
+          git checkout HEAD -- .github/workflows/grouped-audio.yml .github/workflows/build-apk.yml .github/workflows/capture-ui.yml
           python scripts/validate_pack.py data/suyi-full.json
           python - <<'PY'
           import json
