@@ -130,7 +130,7 @@ public final class MainActivity extends Activity {
                 stop.setContentDescription("停止朗读");
                 stop.setOnClickListener(v->{stopSpeech();switchTab(currentTab);});bar.addView(stop);
             }
-            TextView button=text("⋮",28,DARK,false);padding(button,13,0,5,0);
+            TextView button=text("同步",13,TEAL,true);padding(button,10,4,5,4);
             button.setOnClickListener(v->showFileMenu());bar.addView(button);
         }
         return bar;
@@ -212,23 +212,12 @@ public final class MainActivity extends Activity {
             showFiltered(body,all,filter);
             return;
         }
-        Summary s=summary(all);
-        LinearLayout summary=row();
-        summary.addView(statCard("今日目标",dailyGoal+"组", "点击复习开始",()->switchTab(0)),new LinearLayout.LayoutParams(0,dp(76),1.45f));
-        View gap=new View(this);summary.addView(gap,lp(8,1));
-        summary.addView(statCard("平均熟悉度",String.format(Locale.CHINA,"%.1f/4",s.average()),"掌握"+s.mastered+"组",()->switchTab(2)),new LinearLayout.LayoutParams(0,dp(76),1f));
-        body.addView(summary);spacer(body,7);
-        LinearLayout shortcuts=row();
-        shortcuts.addView(tinyMetric("到期",s.due,TEAL,()->switchTab(0)),new LinearLayout.LayoutParams(0,dp(50),1));
-        shortcuts.addView(tinyMetric("未学习",s.unseen,MUTED,()->switchTab(0)),new LinearLayout.LayoutParams(0,dp(50),1));
-        shortcuts.addView(tinyMetric("待复核",s.needsReview,ORANGE,()->switchTab(0)),new LinearLayout.LayoutParams(0,dp(50),1));
-        body.addView(shortcuts);spacer(body,8);
-        body.addView(sectionTitle("科目 · 章节 · 考点"));spacer(body,6);
+
         LinkedHashMap<String,LinkedHashMap<String,LinkedHashMap<String,ArrayList<StudyCard>>>> groups=group(all);
         if(groups.isEmpty()){body.addView(text("尚无资料。点击右上角 ⋮ 导入素材JSON。",15,MUTED,false));return;}
         for(Map.Entry<String,LinkedHashMap<String,LinkedHashMap<String,ArrayList<StudyCard>>>> subject:groups.entrySet()){
             ArrayList<StudyCard> sCards=select(all,subject.getKey(),null,null);
-            LinearLayout card=column();card.setBackground(bg(WHITE,9));padding(card,12,8,12,8);
+            LinearLayout card=column();padding(card,2,2,2,2);
             String key="open_sub_"+subject.getKey();
             LinearLayout inner=column();
             boolean expanded="1".equals(store.setting(key,"1"));inner.setVisibility(expanded?View.VISIBLE:View.GONE);
@@ -285,7 +274,7 @@ public final class MainActivity extends Activity {
                 }
                 inner.addView(cBlock);
             }
-            body.addView(card);spacer(body,10);
+            body.addView(card);spacer(body,2);
         }
         spacer(body,4);body.addView(sectionTitle("其他资料"));spacer(body,5);
         ArrayList<StudyCard> wrong=store.wrongCards(),weak=store.weakCards();
