@@ -1,0 +1,83 @@
+name: Title and body audio
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/title-body-audio.yml']
+permissions:
+  contents: read
+jobs:
+  audio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: .voice-cache
+          key: piper-zh-cn-chaowen-medium-v1
+      - name: Install build-only speech dependencies
+        run: |
+          python -m pip install 'piper-tts[zh]==1.8.0'
+          command -v ffmpeg || (sudo apt-get update -qq && sudo apt-get install -y ffmpeg)
+      - name: Load verified existing Mandarin voice
+        run: |
+          mkdir -p .voice-cache
+          BASE='https://huggingface.co/rhasspy/piper-voices/resolve/a60bfb1358818a92675b3a2d9d48fb8ea47035c1/zh/zh_CN/chaowen/medium/zh_CN-chaowen-medium.onnx'
+          if [ ! -s .voice-cache/zh_CN-chaowen-medium.onnx ] || [ ! -s .voice-cache/zh_CN-chaowen-medium.onnx.json ]; then
+            curl -fL --retry 4 "$BASE" -o .voice-cache/zh_CN-chaowen-medium.onnx
+            curl -fL --retry 4 "$BASE.json" -o .voice-cache/zh_CN-chaowen-medium.onnx.json
+          fi
+          echo '820d64ac16048fbcf38dd0823d37fab5f5e0c2bd71b01ca5a50f553fac19e746  .voice-cache/zh_CN-chaowen-medium.onnx' | sha256sum -c -
+      - name: Synthesize only title and answer
+        env:
+          SHARD: ${{ matrix.shard }}
+          OMP_NUM_THREADS: '2'
+        run: |
+          python - <<'PY'
+          import hashlib,json,os,subprocess,tempfile,wave
+          from pathlib import Path
+          import onnxruntime as ort
+          from piper import PiperVoice
+          root=json.loads(Path('data/suyi-full.json').read_text())
+          def spoken(c):return (c.get('title') or c['path'][2]).strip()+'\n'+c['answer'].strip()
+          buckets=[[] for _ in range(8)];loads=[0]*8
+          for c in sorted(root['cards'],key=lambda c:len(spoken(c)),reverse=True):
+              k=loads.index(min(loads));buckets[k].append(c);loads[k]+=len(spoken(c))
+          cards=buckets[int(os.environ['SHARD'])]
+          model='.voice-cache/zh_CN-chaowen-medium.onnx'
+          voice=PiperVoice.load(model)
+          options=ort.SessionOptions();options.intra_op_num_threads=2;options.inter_op_num_threads=1
+          voice.session=ort.InferenceSession(model,sess_options=options,providers=['CPUExecutionProvider'])
+          out=Path('generated');(out/'audio').mkdir(parents=True,exist_ok=True)
+          manifest={'schema_version':1,'pack_id':root['pack_id'],'generator':'piper-tts:zh_CN-chaowen-medium','speech_format':'title-answer-v1','pack_sha256':hashlib.sha256(Path('data/suyi-full.json').read_bytes()).hexdigest(),'items':{}}
+          texts={}
+          for n,c in enumerate(cards,1):
+              text=spoken(c);cid=c['id'];dest=out/'audio'/f'{cid}.mp3'
+              with tempfile.TemporaryDirectory() as tmp:
+                  wav=Path(tmp)/'speech.wav'
+                  with wave.open(str(wav),'wb') as f:voice.synthesize_wav(text,f)
+                  subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-nostdin','-y','-i',str(wav),'-vn','-ar','24000','-ac','1','-codec:a','libmp3lame','-b:a','32k',str(dest)],check=True)
+              data=dest.read_bytes();assert len(data)>500
+              manifest['items'][cid]={'file':f'audio/{cid}.mp3','text_sha256':hashlib.sha256(text.encode()).hexdigest(),'audio_sha256':hashlib.sha256(data).hexdigest(),'size_bytes':len(data)}
+              texts[cid]=text
+              print(f'{n}/{len(cards)} {cid} {len(data)} bytes',flush=True)
+          (out/'audio-index.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')
+          (out/'spoken-texts.json').write_text(json.dumps(texts,ensure_ascii=False,indent=2)+'\n')
+          print('COMPLETE',len(cards),flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grouped-audio-${{ matrix.shard }}
+          path: generated/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
