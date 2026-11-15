@@ -52,6 +52,8 @@ public final class MainActivity extends Activity {
     private TextView playerPlay,playerTime,playerSpeedLabel,playerTitle;
     private final android.os.Handler playerHandler=new android.os.Handler(android.os.Looper.getMainLooper());
     private boolean seeking=false,syncBusy=false;
+    private AlertDialog syncIndicator;
+    private android.animation.ObjectAnimator syncCatMotion;
     private long observedTrack=-1;
     private FrameLayout content;
     private int currentTab=1;
@@ -87,7 +89,7 @@ public final class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("恢复备份").setMessage("合并这份JSON备份，保留较新的学习记录，不删除现有进度。").setNegativeButton("取消",null)
             .setPositiveButton("导入",(d,w)->onActivityResult(IMPORT,RESULT_OK,intent)).show();
     }
-    @Override protected void onDestroy(){playerHandler.removeCallbacks(playerTicker);store.close();super.onDestroy();}
+    @Override protected void onDestroy(){hideSyncIndicator();playerHandler.removeCallbacks(playerTicker);store.close();super.onDestroy();}
     private int parseGoal(String v){try{int k=Integer.parseInt(v);return Math.max(5,Math.min(100,k));}catch(Exception e){return 25;}}
     private int dp(float value){return Math.round(getResources().getDisplayMetrics().density*value);}
     private GradientDrawable bg(int color,float radius){
@@ -211,16 +213,34 @@ public final class MainActivity extends Activity {
                 startActivityForResult(DriveFileSync.picker(true),DriveFileSync.PICK_PROGRESS);
             }).setNegativeButton("取消",null).show();
     }
+    /** Only while a user-triggered manual sync is running. Never changes transfer behavior. */
+    private void showSyncIndicator(){
+        LinearLayout line=row();line.setGravity(Gravity.CENTER_VERTICAL);padding(line,20,15,20,15);
+        TextView cat=text("🐱",27,DARK,false);cat.setGravity(Gravity.CENTER);line.addView(cat,lp(47,44));
+        TextView label=text("同步中…",14,DARK,true);line.addView(label,new LinearLayout.LayoutParams(0,dp(44),1));
+        label.setGravity(Gravity.CENTER_VERTICAL);
+        android.widget.ProgressBar spinner=new android.widget.ProgressBar(this,null,android.R.attr.progressBarStyleSmall);
+        spinner.setIndeterminateTintList(ColorStateList.valueOf(TEAL));
+        line.addView(spinner,lp(24,24));
+        syncIndicator=new AlertDialog.Builder(this).setView(line).create();
+        syncIndicator.setCancelable(false);syncIndicator.setCanceledOnTouchOutside(false);syncIndicator.show();
+        syncCatMotion=android.animation.ObjectAnimator.ofFloat(cat,"translationY",0f,-dp(3),0f);
+        syncCatMotion.setDuration(900);syncCatMotion.setRepeatCount(android.animation.ValueAnimator.INFINITE);syncCatMotion.start();
+    }
+    private void hideSyncIndicator(){
+        if(syncCatMotion!=null){syncCatMotion.cancel();syncCatMotion=null;}
+        if(syncIndicator!=null){syncIndicator.dismiss();syncIndicator=null;}
+    }
     private void manualDriveSync(){
         if(syncBusy)return;syncBusy=true;
-        Toast.makeText(this,"正在读取所选云端文件…",Toast.LENGTH_SHORT).show();
+        showSyncIndicator();
         new Thread(()->{
             DriveFileSync.Result result=null;String failure=null;
             try{result=DriveFileSync.sync(getApplicationContext(),store);}
             catch(Exception e){failure=e.getMessage();}
             DriveFileSync.Result outcome=result;String error=failure;
             runOnUiThread(()->{
-                syncBusy=false;if(isFinishing()||isDestroyed())return;
+                syncBusy=false;hideSyncIndicator();if(isFinishing()||isDestroyed())return;
                 if(error!=null){
                     new AlertDialog.Builder(this).setTitle("同步未全部完成")
                        .setMessage("手机本地数据仍保留。请检查已选 Google Drive 文件可读写、云盘是否联网。\n\n"+error)
@@ -359,7 +379,7 @@ public final class MainActivity extends Activity {
             String sourceId=source.getKey(),sourceKey="open_pack_"+sourceId;
             String sourcePrefix=sourceId.equals("politics-suyi-full")?"":sourceId+"_";
             ArrayList<StudyCard> sourceCards=source.getValue();
-            LinearLayout sourceBody=column();boolean sourceExpanded="1".equals(store.setting(sourceKey,"0"));sourceBody.setVisibility(sourceExpanded?View.VISIBLE:View.GONE);
+            LinearLayout sourceBody=column();if("politics-suyi-full".equals(sourceId))padding(sourceBody,18,0,0,0);boolean sourceExpanded="1".equals(store.setting(sourceKey,"0"));sourceBody.setVisibility(sourceExpanded?View.VISIBLE:View.GONE);
             String sourceName=studyResources.sourceName(sourceId,store.packTitle(sourceId));
             TextView sourceTitle=text((sourceExpanded?"▾  ":"▸  ")+sourceName,15,DARK,true);sourceTitle.setGravity(Gravity.CENTER_VERTICAL);padding(sourceTitle,2,0,2,0);body.addView(sourceTitle,lp(-1,40));body.addView(sourceBody);
             sourceTitle.setOnClickListener(v->{boolean expanded=sourceBody.getVisibility()!=View.VISIBLE;sourceBody.setVisibility(expanded?View.VISIBLE:View.GONE);sourceTitle.setText((expanded?"▾  ":"▸  ")+sourceName);store.saveSetting(sourceKey,expanded?"1":"0");});
@@ -571,7 +591,7 @@ public final class MainActivity extends Activity {
         }
         body.setOnClickListener(v->toggleAnswer());
         LinearLayout rating=row();padding(rating,17,9,17,10);
-        String[] names={"忘记","模糊","记住"},codes={"no","fuzzy","yes"};int[] colors={0xffa36f69,0xff8e8372,TEAL};
+        String[] names={"记住","模糊","忘记"},codes={"yes","fuzzy","no"};int[] colors={TEAL,0xff8e8372,0xffa36f69};
         for(int i=0;i<3;i++){final String code=codes[i];TextView btn=text(names[i],14,colors[i],false);btn.setGravity(Gravity.CENTER);btn.setBackground(stroke(WHITE,5,0xffe2e8e4));btn.setEnabled(showAnswer);btn.setAlpha(showAnswer?1f:.36f);LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(0,dp(43),1);if(i>0)bp.leftMargin=dp(9);rating.addView(btn,bp);btn.setOnClickListener(v->rateCurrent(card,code));}
         page.addView(rating);return page;
     }
