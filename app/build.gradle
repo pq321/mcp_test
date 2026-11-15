@@ -8,8 +8,9 @@ android {
         applicationId 'org.vector.politicsmemory'
         minSdk 26
         targetSdk 34
-        versionCode 8
-        versionName '0.11.0'
+        versionCode 9
+        versionName '0.12.0'
+        testInstrumentationRunner 'org.vector.politicsmemory.StudyControlsInstrumentation'
     }
     buildTypes {
         release { minifyEnabled false }

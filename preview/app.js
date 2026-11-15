@@ -4,18 +4,22 @@ const PACK=window.POLITICS_PACK,AUDIO_INDEX=window.POLITICS_AUDIO_INDEX||{schema
 const KEY='politics_suyi_grouped_v07',LEGACY='politics_web_preview_v1',SUBJECTS=['马原','毛中特','新思想','史纲','思修'],SPEEDS=[.75,1,1.25,1.5,1.75,2,2.5,3,3.5,4];
 const $=id=>document.getElementById(id),esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let stored={};try{stored=JSON.parse(localStorage.getItem(KEY)||'{}')||{}}catch(e){stored={}}
-let cards=PACK.cards.map(c=>({...c}));let reviews=stored.reviews||{},events=Array.isArray(stored.events)?stored.events:[],wrong=new Set(stored.wrong||[]),imports=Array.isArray(stored.imports)?stored.imports:[],wrongChanges=stored.wrongChanges||{};
+let resourceUpdates=stored.resourceUpdates||{};
+const BASE_RESOURCES=window.POLITICS_STUDY_RESOURCES||{schema_version:1,sources:{},voices:{},annotations:{}};
+let resources=mergeResources(BASE_RESOURCES,resourceUpdates);
+let packCatalog={...stored.packCatalog,[PACK.pack_id]:{...(stored.packCatalog?.[PACK.pack_id]||{}),pack_id:PACK.pack_id,title:PACK.title,pack_revision:Math.max(PACK.pack_revision,stored.packCatalog?.[PACK.pack_id]?.pack_revision||0)}};
+let cards=PACK.cards.map(c=>({...c,pack_id:PACK.pack_id}));let reviews=stored.reviews||{},events=Array.isArray(stored.events)?stored.events:[],wrong=new Set(stored.wrong||[]),imports=Array.isArray(stored.imports)?stored.imports:[],wrongChanges=stored.wrongChanges||{};
 let retired=new Set(stored.retired||[]),contentRevision=Math.max(PACK.pack_revision||1,Number(stored.contentRevision)||0),audioUpdates=stored.audioUpdates||{};
 Object.assign(AUDIO_INDEX.items,audioUpdates);
 const validCard=c=>c&&typeof c.id==='string'&&c.id.length<200&&Array.isArray(c.path)&&c.path.length===3&&c.path.every(x=>typeof x==='string')&&typeof c.question==='string'&&typeof c.answer==='string';
-function mergeCards(list){for(const c of list){if(!validCard(c))throw Error('卡片必须有 id、三层 path、question、answer');const old=cards.find(x=>x.id===c.id);if(old){if((c.revision||1)<(old.revision||1))continue;if(old.question!==c.question||old.answer!==c.answer){if(reviews[c.id])reviews[c.id].needsReview=true}Object.assign(old,c)}else cards.push({...c})}}
+function mergeCards(list){for(const c of list){if(!validCard(c))throw Error('卡片必须有 id、三层 path、question、answer');const old=cards.find(x=>x.id===c.id);if(old){if(c.pack_id&&old.pack_id&&c.pack_id!==old.pack_id)throw Error('不同资料来源的知识点ID冲突');if((c.revision||1)<(old.revision||1))continue;if(old.question!==c.question||old.answer!==c.answer){if(reviews[c.id])reviews[c.id].needsReview=true}Object.assign(old,c)}else cards.push({...c})}}
 try{mergeCards(imports.filter(validCard));cards=cards.filter(c=>!retired.has(c.id))}catch(e){}
 const sig=c=>{let h=2166136261;for(const ch of c.question+'\n'+c.answer)h=Math.imul(h^ch.codePointAt(0),16777619);return (h>>>0).toString(16)};
 for(const c of cards){const r=reviews[c.id];if(r&&r.contentSig&&r.contentSig!==sig(c))r.needsReview=true}
-let app={tab:stored.tab==='review'?'review':'books',show:!!stored.show,goal:Math.max(1,Math.min(500,Number(stored.goal)||25)),speed:SPEEDS.includes(Number(stored.speed))?Number(stored.speed):1,index:Number(stored.index)||0,scope:'全部知识组',positionAt:Number(stored.positionAt)||0,session:[],search:'',open:new Set(stored.open||[])};
+let app={tab:stored.tab==='review'?'review':'books',mode:0,show:false,voice:stored.voice||'default',goal:Math.max(1,Math.min(500,Number(stored.goal)||25)),speed:SPEEDS.includes(Number(stored.speed))?Number(stored.speed):1,index:Number(stored.index)||0,scope:'全部知识组',positionAt:Number(stored.positionAt)||0,session:[],search:'',open:new Set(stored.open||[])};
 const savedCurrent=(stored.session||[])[Number(stored.index)||0]||'';app.session=cards.slice();app.index=Math.max(0,cards.findIndex(c=>c.id===savedCurrent));
 let toastTimer,moving=false,suppressUntil=0,gesture=null,audio=new Audio(),playingId='';audio.preload='none';audio.preservesPitch=true;audio.playbackRate=app.speed;
-function persist(){try{localStorage.setItem(KEY,JSON.stringify({version:11,reviews,events,wrong:[...wrong],wrongChanges,positionAt:app.positionAt,imports,retired:[...retired],contentRevision,audioUpdates,show:app.show,goal:app.goal,speed:app.speed,index:app.index,scope:app.scope,session:app.session.map(c=>c.id),tab:app.tab,open:[...app.open]}));delete document.body.dataset.storage;return true}catch(e){document.body.dataset.storage='failed';toast('浏览器未允许保存，请点同步把进度保存到电脑。');return false}}
+function persist(){try{localStorage.setItem(KEY,JSON.stringify({version:12,resourceUpdates,packCatalog,voice:app.voice,reviews,events,wrong:[...wrong],wrongChanges,positionAt:app.positionAt,imports,retired:[...retired],contentRevision,audioUpdates,show:app.show,goal:app.goal,speed:app.speed,index:app.index,scope:app.scope,session:app.session.map(c=>c.id),tab:app.tab,open:[...app.open]}));delete document.body.dataset.storage;return true}catch(e){document.body.dataset.storage='failed';toast('浏览器未允许保存，请点同步把进度保存到电脑。');return false}}
 function toast(t){$('toast').textContent=t;$('toast').classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('on'),2400)}
 function state(c){return reviews[c.id]||{score:0,reviewCount:0,lastRating:'',lastYesDay:'',dueAt:0,lastReviewAt:0,needsReview:false}}
 function mastered(c){const r=state(c);return r.score>=3&&r.lastRating==='yes'&&!r.needsReview}
@@ -26,15 +30,42 @@ function current(){return app.session[app.index]}
 function setScope(list,name,start){app.session=cards.slice();app.scope=name;app.index=Math.max(0,app.session.findIndex(c=>c.id===(start||list[0]?.id)));app.tab='review';app.positionAt=Date.now();render();persist()}
 function nav(tab){app.tab=tab;if(tab==='review'&&!app.session.length){app.session=today();app.index=0;app.scope='今日复习'}render();persist()}
 function renderNav(){$('nav').innerHTML=[['review','复习'],['books','资料'],['stats','统计']].map(([k,t])=>`<button data-tab="${k}" class="${app.tab===k?'active':''}" aria-current="${app.tab===k?'page':'false'}">${t}</button>`).join('');$('nav').querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>nav(b.dataset.tab))}
-function toolbar(){const is=app.tab==='review',c=current();$('toolbar').innerHTML=is?'<button id="back" aria-label="返回资料">‹</button><span class="counter">'+(app.session.length?app.index+1:0)+' / '+app.session.length+'</span><button id="reveal">'+(app.show?'收起':'揭晓')+'</button><button id="more" aria-label="同步数据">同步</button>':'<span class="brand">政治背诵</span><button id="more" aria-label="同步数据">同步</button>';$('more').onclick=syncData;$('more').title='v0.11 · 仅点击时同步；长按重新连接';$('more').oncontextmenu=e=>{e.preventDefault();connectComputer()};if(is){$('back').onclick=()=>nav('books');$('reveal').onclick=toggle}}
+function toolbar(){const is=app.tab==='review',c=current();$('toolbar').innerHTML=is?'<button id="back" aria-label="返回资料">‹</button><span class="counter">'+(app.session.length?app.index+1:0)+' / '+app.session.length+'</span><button id="reveal">'+(['揭晓','挖空','回忆'][app.mode])+'</button><button id="more" aria-label="同步数据">同步</button>':'<span class="brand">政治背诵</span><button id="more" aria-label="同步数据">同步</button>';$('more').onclick=syncData;$('more').title='v0.11 · 仅点击时同步；长按重新连接';$('more').oncontextmenu=e=>{e.preventDefault();connectComputer()};if(is){$('back').onclick=()=>nav('books');$('reveal').onclick=toggle}}
 function render(){gesture=null;renderNav();$('ratings').innerHTML='';if(app.tab==='review'){if(!app.session.length)app.session=today();app.index=app.session.length?((app.index%app.session.length)+app.session.length)%app.session.length:0;renderReview()}else if(app.tab==='books')renderBooks();else renderStats();toolbar();updatePlayer()}
+function mergeResources(base,patch){
+ const out=JSON.parse(JSON.stringify(base));out.schema_version=1;
+ for(const section of ['sources','voices','annotations']){
+  out[section]||={};for(const [id,item] of Object.entries(patch[section]||{})){
+   const old=out[section][id];if(!old||(item.revision||1)>(old.revision||1))out[section][id]=item;
+  }
+ }return out;
+}
+function wasWrong(id){return wrong.has(id)||Object.hasOwn(wrongChanges,id)}
+function sourceName(id){return resources.sources?.[id]?.name||packCatalog[id]?.title||id}
+function validMarks(c){
+ const a=resources.annotations?.[c.id];if(!a||a.answer_sha256!==sha256Fallback(new TextEncoder().encode(c.answer)))return [];
+ let end=0;return(a.marks||[]).filter(m=>{const ok=Number.isInteger(m.start)&&Number.isInteger(m.end)&&m.start>=end&&m.end>m.start&&m.end<=c.answer.length&&c.answer.slice(m.start,m.end)===m.text&&['core','confusion','condition'].includes(m.kind);if(ok)end=m.end;return ok});
+}
+function answerMarkup(c){
+ const marks=validMarks(c);let text='',at=0;
+ for(const m of marks){text+=esc(c.answer.slice(at,m.start));text+=app.mode===2&&m.cloze?'<span class="study-blank" aria-label="待回忆内容">［　　］</span>':'<span class="study-'+m.kind+'">'+esc(m.text)+'</span>';at=m.end}
+ text+=esc(c.answer.slice(at));if(app.mode===2&&!marks.length)text+='\n\n<span class="small">本组尚未提供匹配的挖空标记。</span>';return text;
+}
+function voiceOptions(){return[{id:'default',name:resources.voices?.default?.name||'默认声音'},...Object.entries(resources.voices||{}).filter(([id,v])=>id!=='default'&&!v.retired&&Object.keys(v.items||{}).length).map(([id,v])=>({id,name:v.name||id}))]}
+function showPlaybackOptions(){
+ const selected=voiceOptions().some(v=>v.id===app.voice)?app.voice:'default';
+ modal('朗读倍速',SPEEDS.map(v=>'<button class="menu-item playback-option" role="radio" aria-checked="'+(v===app.speed)+'" data-speed="'+v+'">'+(v===app.speed?'◉ ':'○ ')+v+'×</button>').join('')+'<details id="voiceOptions"><summary>声音</summary>'+voiceOptions().map(v=>'<button class="menu-item playback-option" role="radio" aria-checked="'+(v.id===selected)+'" data-voice="'+esc(v.id)+'">'+(v.id===selected?'◉ ':'○ ')+esc(v.name)+'</button>').join('')+'</details>');
+ $('dialog').querySelectorAll('[data-speed]').forEach(b=>b.onclick=()=>{setSpeed(Number(b.dataset.speed));$('dialog').close()});
+ $('dialog').querySelectorAll('[data-voice]').forEach(b=>b.onclick=()=>{setVoice(b.dataset.voice);$('dialog').close()});
+}
+function setVoice(id){if(!voiceOptions().some(v=>v.id===id))return;app.voice=id;persist();if(playingId)loadTrack(audio.paused);toast('全局声音：'+voiceOptions().find(v=>v.id===id).name)}
 function renderReview(){const c=current();if(!c){$('main').innerHTML='<div class="empty">当前没有待复习的知识组。<br>从资料选择科目或章节，随时开始背诵。</div>';return}
- const paragraphs=c.answer.split(/\n\s*\n/);const answer=paragraphs.length>1?paragraphs.map(p=>`<p>${esc(p)}</p>`).join(''):c.answer.split('\n').map(p=>`<div class="line">${esc(p)}</div>`).join('');
- $('main').innerHTML=`<article class="review-content" id="reviewContent"><div class="path">${esc(c.path.join(' › '))}</div><h1 class="title">${esc(c.title||c.path[2])}</h1><p class="question">${esc(c.question)}</p><hr class="separator">${app.show?`<div class="answer" id="answer">${answer}</div>${c.notes?`<p class="note">${esc(c.notes)}</p>`:''}`:'<div class="recall-prompt" id="recallPrompt">先回忆，再点击揭晓</div>'}</article>`;
+ const rendered=answerMarkup(c),paragraphs=rendered.split(/\n\s*\n/);const answer=paragraphs.length>1?paragraphs.map(p=>`<p>${p}</p>`).join(''):rendered.split('\n').map(p=>`<div class="line">${p}</div>`).join('');
+ $('main').innerHTML=`<article class="review-content" id="reviewContent"><div class="path">${esc(c.path.join(' › '))}</div><h1 class="title ${wasWrong(c.id)?'wrong-before':''}">${esc(c.title||c.path[2])}</h1><p class="question">${esc(c.question)}</p><hr class="separator">${app.show?`<div class="answer" id="answer" data-mode="${app.mode===2?'cloze':'complete'}">${answer}</div>${c.notes?`<p class="note">${esc(c.notes)}</p>`:''}`:'<div class="recall-prompt" id="recallPrompt">先回忆，再点击揭晓</div>'}</article>`;
  $('main').scrollTop=0;
  $('ratings').innerHTML=`<div class="grade-row"><button class="grade no" data-rate="no" ${app.show?'':'disabled'}>忘记</button><button class="grade fuzzy" data-rate="fuzzy" ${app.show?'':'disabled'}>模糊</button><button class="grade yes" data-rate="yes" ${app.show?'':'disabled'}>记住</button></div>`;
  $('ratings').querySelectorAll('[data-rate]').forEach(b=>b.onclick=()=>rate(b.dataset.rate));
- const title=$('main').querySelector('.title');title.oncontextmenu=e=>{e.preventDefault();wrong.has(c.id)?wrong.delete(c.id):wrong.add(c.id);wrongChanges[c.id]={marked:wrong.has(c.id),at:Date.now()};persist();toast(wrong.has(c.id)?'已加入错题':'已移出错题')};
+ const title=$('main').querySelector('.title');title.oncontextmenu=e=>{e.preventDefault();wrong.has(c.id)?wrong.delete(c.id):wrong.add(c.id);wrongChanges[c.id]={marked:wrong.has(c.id),at:Date.now()};title.classList.add('wrong-before');persist();toast(wrong.has(c.id)?'已加入错题':'已移出错题')};
  const el=$('reviewContent');el.onclick=e=>{if(Date.now()<suppressUntil||moving||e.target.closest('button,select,a'))return;toggle()};
  el.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'&&e.button!==0)return;gesture={id:e.pointerId,x:e.clientX,y:e.clientY,dx:0,dy:0,axis:null};});
  el.addEventListener('pointermove',e=>{if(!gesture||gesture.id!==e.pointerId||moving)return;const g=gesture;g.dx=e.clientX-g.x;g.dy=e.clientY-g.y;if(!g.axis&&Math.max(Math.abs(g.dx),Math.abs(g.dy))>9)g.axis=Math.abs(g.dx)>Math.abs(g.dy)*1.35?'x':'y';if(g.axis==='x'){e.preventDefault();try{el.setPointerCapture(e.pointerId)}catch(err){}el.style.transform=`translateX(${g.dx}px)`;suppressUntil=Date.now()+350}else if(g.axis==='y')suppressUntil=Date.now()+250});
@@ -43,7 +74,7 @@ return}bounce(el)}else if(g.axis==='y')suppressUntil=Date.now()+300};el.addEvent
 }
 function reduced(){return matchMedia('(prefers-reduced-motion: reduce)').matches}
 function bounce(el){if(!el)return;el.style.transition=reduced()?'none':'transform 160ms ease-out';el.style.transform='translateX(0)';setTimeout(()=>{el.style.transition=''},170)}
-function toggle(){if(moving||!current())return;app.show=!app.show;renderReview();toolbar();persist()}
+function toggle(){if(moving||!current())return;app.mode=(app.mode+1)%3;app.show=app.mode!==0;renderReview();toolbar();persist()}
 function step(dir,startDx=0){if(moving||app.tab!=='review'||!app.session.length)return;const count=app.session.length,target=(app.index+dir+count)%count,el=$('reviewContent');moving=true;const sign=dir>0?-1:1,dist=Math.max(100,$('main').clientWidth);if(el){el.style.transition=reduced()?'none':'transform 150ms ease-out';el.style.transform='translateX('+sign*dist+'px)'}setTimeout(()=>{app.index=target;app.positionAt=Date.now();renderReview();toolbar();if(playSource==='review'&&playingId)playQueue(rotated(app.session,app.index),'review',audio.paused);updatePlayer();const incoming=$('reviewContent');if(incoming&&!reduced()){incoming.style.transition='none';incoming.style.transform='translateX('+(-sign*dist)+'px)';requestAnimationFrame(()=>requestAnimationFrame(()=>{incoming.style.transition='transform 170ms ease-out';incoming.style.transform='translateX(0)'}))}persist();setTimeout(()=>{moving=false;if(incoming)incoming.style.transition=''},reduced()?0:190)},reduced()?0:155)}
 function day(ms){const d=new Date(ms);return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')}
 function nextDay(now,n){const d=new Date(now);d.setDate(d.getDate()+n);return +d}
@@ -57,14 +88,17 @@ function renderBooks(){
   const q=app.search.trim().toLocaleLowerCase(),found=cards.filter(c=>([...c.path,c.title,c.question,c.answer,c.notes].join(' ')).toLocaleLowerCase().includes(q));
   h+='<p class="small">'+found.length+' 组</p>'+found.map(knowledgeRow).join('');
  }else{
-  for(const sub of SUBJECTS.concat(unique(cards.map(c=>c.path[0])).filter(x=>!SUBJECTS.includes(x)))){
-   const list=cards.filter(c=>c.path[0]===sub);
-   h+=branch('S:'+sub,sub,list,()=>unique(list.map(c=>c.path[1])).map(ch=>{
-    const cl=list.filter(c=>c.path[1]===ch);
-    return branch('C:'+sub+'|'+ch,ch,cl,()=>unique(cl.map(c=>c.path[2])).map(t=>{
-     const tl=cl.filter(c=>c.path[2]===t);return branch('T:'+sub+'|'+ch+'|'+t,t,tl,()=>tl.map(knowledgeRow).join(''));
+  for(const sourceId of unique(cards.map(c=>c.pack_id||PACK.pack_id))){
+   const sourceCards=cards.filter(c=>(c.pack_id||PACK.pack_id)===sourceId),prefix=sourceId===PACK.pack_id?'':sourceId+'|';
+   h+=branch('P:'+sourceId,sourceName(sourceId),sourceCards,()=>SUBJECTS.concat(unique(sourceCards.map(c=>c.path[0])).filter(x=>!SUBJECTS.includes(x))).filter(sub=>sourceCards.some(c=>c.path[0]===sub)).map(sub=>{
+    const list=sourceCards.filter(c=>c.path[0]===sub);
+    return branch(prefix+'S:'+sub,sub,list,()=>unique(list.map(c=>c.path[1])).map(ch=>{
+     const cl=list.filter(c=>c.path[1]===ch);
+     return branch(prefix+'C:'+sub+'|'+ch,ch,cl,()=>unique(cl.map(c=>c.path[2])).map(t=>{
+      const tl=cl.filter(c=>c.path[2]===t);return branch(prefix+'T:'+sub+'|'+ch+'|'+t,t,tl,()=>tl.map(knowledgeRow).join(''));
+     }).join(''));
     }).join(''));
-   }).join(''));
+   }).join(''),false,false);
   }
   const wrongCards=cards.filter(c=>wrong.has(c.id)),weak=cards.filter(c=>['no','fuzzy'].includes(state(c).lastRating));
   h+=branch('wrong','错题',wrongCards,()=>'<div class="small">做题错题</div>'+(wrongCards.map(knowledgeRow).join('')||'<p class="small">暂无标记</p>')+'<div class="small">背诵薄弱</div>'+weak.map(knowledgeRow).join(''),true);
@@ -74,10 +108,10 @@ function renderBooks(){
  $('main').querySelectorAll('details[data-open]').forEach(d=>d.ontoggle=()=>{d.open?app.open.add(d.dataset.open):app.open.delete(d.dataset.open);persist()});
  $('main').querySelectorAll('[data-review]').forEach(b=>b.onclick=()=>setScope(cards,'全部知识组',b.dataset.review));
  $('main').querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playAudioCard(cards.find(c=>c.id===b.dataset.play)));
- $('main').querySelectorAll('[data-start]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();const path=JSON.parse(b.dataset.start);playQueue(cards.filter(c=>path.every((v,i)=>c.path[i]===v)),'catalogue')});
+ $('main').querySelectorAll('[data-start]').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();const ids=new Set(JSON.parse(b.dataset.start));playQueue(cards.filter(c=>ids.has(c.id)),'catalogue')});
  const input=$('search');input.value=app.search;input.oninput=()=>{const pos=input.selectionStart;app.search=input.value;renderBooks();$('search').focus();$('search').setSelectionRange(pos,pos)};
 }
-function branch(key,name,list,child,special=false){const z=summary(list),path=special?[]:key.startsWith('S:')?[name]:key.slice(2).split('|');return `<details class="branch" data-open="${esc(key)}" ${app.open.has(key)?'open':''}><summary><span class="name">${esc(name)}</span><span class="count">${special?list.length:z.mastered+'/'+list.length}</span>${!special&&list.length?`<button class="start" data-start="${esc(JSON.stringify(path))}" aria-label="播放${esc(name)}">▶</button>`:''}</summary>${child()}</details>`}
+function branch(key,name,list,child,special=false,play=true){const z=summary(list);return `<details class="branch" data-open="${esc(key)}" ${app.open.has(key)?'open':''}><summary><span class="name">${esc(name)}</span><span class="count">${special?list.length:z.mastered+'/'+list.length}</span>${!special&&play&&list.length?`<button class="start" data-start="${esc(JSON.stringify(list.map(c=>c.id)))}" aria-label="播放${esc(name)}">▶</button>`:''}</summary>${child()}</details>`}
 function renderStats(){const s=summary(cards),weak=cards.filter(c=>['no','fuzzy'].includes(state(c).lastRating)).length;$('main').innerHTML=`<div class="page"><h1>统计</h1><div class="stat-total">${s.mastered}<span class="small"> / ${s.total} 组</span></div><div class="small">已掌握完整知识组</div><div class="stat-grid"><div><b>${s.studied}</b><span class="small">已评分</span></div><div><b>${s.due}</b><span class="small">到期复习</span></div><div><b>${s.total-s.studied}</b><span class="small">未学习</span></div></div>${SUBJECTS.map(name=>{const z=summary(cards.filter(c=>c.path[0]===name));return `<div class="stat-row"><span>${name}</span><span>已背 ${z.studied}/${z.total} · 掌握 ${z.mastered}</span></div>`}).join('')}<p class="small">做题错题 ${wrong.size} 组 · 背诵薄弱 ${weak} 组</p><p class="small">在不同日期至少两次选择“记住”，且最近一次仍为“记住”，才计入掌握。只是揭晓、翻页不计分。评分按整组；只会其中一部分应选“模糊”。</p><p class="small">旧版93条短卡记录保持原样，不自动转换为新知识组已掌握。</p></div>`}
 function modal(title,body){const d=$('dialog');d.innerHTML=`<button class="close" aria-label="关闭">×</button><h2>${esc(title)}</h2>${body}`;d.querySelector('.close').onclick=()=>d.close();if(!d.open)d.showModal()}
 // One-time computer pairing, then one tap uploads directly. Credentials never enter backups.
@@ -126,36 +160,56 @@ async function pullProgress(){
  if(!syncConfig||syncBusy)return;
  try{const o=await syncRequest(syncConfig,'/api/progress');if(o.revision>lastSyncedRevision)lastSyncedRevision=applyProgress(o)}catch(e){/* No false success, and no recurring popups while the computer is offline. */}
 }
+function preparePackUpdates(packs){
+ const next=cards.map(c=>({...c,pack_id:c.pack_id||PACK.pack_id})),rs=JSON.parse(JSON.stringify(reviews)),catalog=JSON.parse(JSON.stringify(packCatalog)),gone=new Set(retired);let added=0,updated=0,removed=0;
+ for(const pack of packs){
+  if(pack.schema_version!==1||!(/^[A-Za-z0-9._-]{1,80}$/.test(pack.pack_id))||!Number.isInteger(pack.pack_revision)||pack.pack_revision<1||!Array.isArray(pack.cards)||pack.cards.length>20000)throw Error('知识包内容不合法');
+  if(pack.pack_revision<=(catalog[pack.pack_id]?.pack_revision||0))continue;
+  const ids=new Set();for(const c of pack.cards){if(!validCard(c)||ids.has(c.id))throw Error('知识点ID重复或格式非法');ids.add(c.id);const other=next.find(x=>x.id===c.id);if(other&&other.pack_id!==pack.pack_id)throw Error('不同资料来源的知识点ID冲突')}
+  for(let i=next.length-1;i>=0;i--)if(next[i].pack_id===pack.pack_id&&!ids.has(next[i].id)){gone.add(next[i].id);next.splice(i,1);removed++}
+  for(const raw of pack.cards){const c={...raw,pack_id:pack.pack_id},at=next.findIndex(x=>x.id===c.id),old=next[at];gone.delete(c.id);
+   if(!old){next.push(c);added++}else if((c.revision||1)>=(old.revision||1)){if(JSON.stringify(old)!==JSON.stringify(c))updated++;if((old.question!==c.question||old.answer!==c.answer)&&rs[c.id])rs[c.id].needsReview=true;next[at]=c}
+  }
+  catalog[pack.pack_id]={pack_id:pack.pack_id,title:pack.title||pack.pack_id,pack_revision:pack.pack_revision};
+ }
+ return {cards:next,reviews:rs,catalog,retired:gone,added,updated,removed};
+}
+function commitStudyUpdate(next,patch,audioPatch={}){
+ const keep=current()?.id,baseline=new Map(PACK.cards.map(c=>[c.id,{...c,pack_id:PACK.pack_id}]));
+ const previous={cards,reviews,packCatalog,retired,imports,resourceUpdates,resources,audioUpdates,contentRevision,session:app.session,index:app.index};
+ cards=next.cards;reviews=next.reviews;packCatalog=next.catalog;retired=next.retired;
+ imports=cards.filter(c=>!baseline.has(c.id)||JSON.stringify(baseline.get(c.id))!==JSON.stringify(c));
+ resourceUpdates=mergeResources(resourceUpdates,patch);resources=mergeResources(BASE_RESOURCES,resourceUpdates);
+ audioUpdates={...audioUpdates,...audioPatch};contentRevision=packCatalog[PACK.pack_id]?.pack_revision||contentRevision;
+ app.session=cards.slice();app.index=Math.max(0,cards.findIndex(c=>c.id===keep));
+ if(!persist()){
+  ({cards,reviews,packCatalog,retired,imports,resourceUpdates,resources,audioUpdates,contentRevision}=previous);app.session=previous.session;app.index=previous.index;throw Error('资料已读取，但无法保存到浏览器');
+ }
+ Object.assign(AUDIO_INDEX.items,audioUpdates);render();return{added:next.added,updated:next.updated,removed:next.removed,resourcesChanged:Object.keys(patch.sources||{}).length+Object.keys(patch.voices||{}).length+Object.keys(patch.annotations||{}).length>0};
+}
 async function fetchContentOnManualSync(config){
  const response=await syncRequest(config,'/api/content');
  if(response.kind!=='politics-memory-content-update')throw Error('更新包协议不匹配');
  if(response.status!=='available')return{added:0,updated:0,removed:0};
- const pack=response.pack,manifest=response.audio_index;
- if(!pack||pack.pack_id!=='politics-suyi-full'||pack.schema_version!==1||!Array.isArray(pack.cards)||pack.cards.length>20000)
-  throw Error('知识包内容不合法');
- if(!manifest||manifest.pack_id!==pack.pack_id)throw Error('更新音频索引不匹配');
- if(pack.pack_revision<=contentRevision)return{added:0,updated:0,removed:0};
- const ids=new Set(),prior=new Map(cards.map(c=>[c.id,c]));
- for(const c of pack.cards){if(!validCard(c)||ids.has(c.id))throw Error('知识点ID重复或格式非法');ids.add(c.id)}
- const additions=pack.cards.filter(c=>!prior.has(c.id)).length;
- const modifications=pack.cards.filter(c=>prior.has(c.id)&&JSON.stringify(prior.get(c.id))!==JSON.stringify(c)).length;
- const removed=cards.filter(c=>!ids.has(c.id)).length;
- // Preserve all review history; changes to wording require a new recall.
- for(const c of pack.cards){const old=prior.get(c.id);if(old&&(old.question!==c.question||old.answer!==c.answer)&&reviews[c.id])reviews[c.id].needsReview=true}
- for(const [id,item] of Object.entries(manifest.items||{})){
-  if(item.file!=='audio/'+id+'.mp3'||!ids.has(id)||!(/^[0-9a-f]{64}$/.test(item.text_sha256)))throw Error('新增录音索引无效');
-  const c=pack.cards.find(x=>x.id===id);
-  if(await sha256Hex(spokenText(c))!==item.text_sha256)throw Error('更新录音与正文不匹配');
+ const next=preparePackUpdates(response.resource_update?(response.packs||[]):[response.pack]),all=new Map(next.cards.map(c=>[c.id,c]));
+ if(response.resource_update){
+  const patch=response.study_resources;if(!patch||patch.schema_version!==1)throw Error('学习资源格式不合法');
+  for(const [voiceId,v] of Object.entries(patch.voices||{}))for(const [id,item] of Object.entries(v.items||{})){
+   if(item.file!=='audio/'+voiceId+'/'+v.revision+'/'+id+'.mp3'||!(/^[a-f0-9]{64}$/.test(item.audio_sha256)))throw Error('声音索引无效');
+   const c=all.get(id);if(c&&await sha256Hex(spokenText(c))!==item.text_sha256)throw Error('声音与正文不匹配');
+  }
+  for(const [id,a] of Object.entries(patch.annotations||{})){
+   const c=all.get(id);if(!c)continue;if(await sha256Hex(c.answer)!==a.answer_sha256)throw Error('挖空与正文不匹配');
+   let last=0;for(const m of a.marks||[]){if(!Number.isInteger(m.start)||!Number.isInteger(m.end)||m.start<last||m.end<=m.start||c.answer.slice(m.start,m.end)!==m.text||!['core','confusion','condition'].includes(m.kind))throw Error('挖空位置不合法');last=m.end}
+  }
+  return commitStudyUpdate(next,patch);
  }
- // The server itself serves new audio from the selected Drive update ZIP.
- audioUpdates={...audioUpdates,...(manifest.items||{})};Object.assign(AUDIO_INDEX.items,audioUpdates);
- retired=new Set([...new Set([...PACK.cards.map(c=>c.id),...prior.keys()])].filter(id=>!ids.has(id)));
- const baseline=new Map(PACK.cards.map(c=>[c.id,c]));
- imports=pack.cards.filter(c=>!baseline.has(c.id)||JSON.stringify(baseline.get(c.id))!==JSON.stringify(c));
- cards=pack.cards.map(c=>({...c}));contentRevision=pack.pack_revision;
- const keep=current()?.id;app.session=cards.slice();app.index=Math.max(0,cards.findIndex(c=>c.id===keep));
- if(!persist())throw Error('资料已读取，但无法保存到浏览器');
- render();return{added:additions,updated:modifications,removed};
+ const pack=response.pack,manifest=response.audio_index;
+ if(!manifest||manifest.pack_id!==pack.pack_id)throw Error('更新音频索引不匹配');
+ for(const [id,item] of Object.entries(manifest.items||{})){
+  if(item.file!=='audio/'+id+'.mp3'||!all.has(id)||await sha256Hex(spokenText(all.get(id)))!==item.text_sha256)throw Error('新增录音索引无效');
+ }
+ return commitStudyUpdate(next,{},manifest.items||{});
 }
 async function uploadToComputer(config=syncConfig){
  if(syncBusy)return;syncBusy=true;toast('正在同步到电脑…');
@@ -213,12 +267,14 @@ function spokenText(c){return (c.title||c.path[2]||'').trim()+'\n'+c.answer.trim
 let playList=[],playAt=0,playSource='',playToken=0,playerSeeking=false;
 async function loadTrack(paused=false){
  const token=++playToken,c=playList[playAt];if(!c)return;
- const entry=AUDIO_INDEX.items?.[c.id];
+ const chosen=resources.voices?.[app.voice],selected=chosen&&!chosen.retired?chosen.items?.[c.id]:null;
+ const entry=selected||resources.voices?.default?.items?.[c.id]||AUDIO_INDEX.items?.[c.id];
+ if(app.voice!=='default'&&!selected)toast('所选声音未覆盖本组，使用默认声音');
  try{
-  if(!entry||entry.file!=='audio/'+c.id+'.mp3')throw Error('本组尚无匹配录音');
+  if(!entry||!(entry.file==='audio/'+c.id+'.mp3'||/^audio\/[A-Za-z0-9._-]+\/[0-9]+\/[A-Za-z0-9._-]+\.mp3$/.test(entry.file)))throw Error('本组尚无匹配录音');
   if(await sha256Hex(spokenText(c))!==entry.text_sha256)throw Error('录音与知识组不匹配');
   if(token!==playToken)return;
-  audio.pause();playingId=c.id;if(playSource==='review'){const at=app.session.findIndex(x=>x.id===c.id);if(at>=0&&app.index!==at){app.index=at;app.positionAt=Date.now();if(app.tab==='review'){renderReview();toolbar()}persist()}}audio.src=(window.POLITICS_AUDIO_BASE||'')+entry.file;audio.preload='metadata';audio.playbackRate=app.speed;
+  audio.pause();playingId=c.id;if(playSource==='review'){const at=app.session.findIndex(x=>x.id===c.id);if(at>=0&&app.index!==at){app.index=at;app.positionAt=Date.now();if(app.tab==='review'){renderReview();toolbar()}persist()}}audio.src=(entry.file.split('/').length===4&&syncConfig?syncConfig.base+'/':(window.POLITICS_AUDIO_BASE||''))+entry.file;audio.preload='metadata';audio.playbackRate=app.speed;
   if(!paused)await audio.play();else audio.load();updatePlayer();
  }catch(e){if(token===playToken){audio.pause();playingId='';playList=[];playSource='';toast(e.message);updatePlayer()}}
 }
@@ -232,15 +288,15 @@ function updatePlayer(){
  const p=$('player');if(!p)return;
  p.hidden=!playingId&&app.tab!=='review';
  if(!$('playerToggle')){
-  p.innerHTML='<div class="player-info"><span id="playerTitle"></span><span id="playerTime">0:00 / 0:00</span></div><div class="player-controls"><button id="playerToggle" aria-label="播放或暂停">▶</button><input id="seek" aria-label="播放进度" type="range" min="0" max="1000" value="0"><select id="playerSpeed" aria-label="播放速度">'+SPEEDS.map(v=>'<option value="'+v+'">'+v+'×</option>').join('')+'</select></div>';
-  $('playerToggle').onclick=toggleAudio;$('playerSpeed').onchange=e=>setSpeed(Number(e.target.value));
+  p.innerHTML='<div class="player-info"><span id="playerTitle"></span><span id="playerTime">0:00 / 0:00</span></div><div class="player-controls"><button id="playerToggle" aria-label="播放或暂停">▶</button><input id="seek" aria-label="播放进度" type="range" min="0" max="1000" value="0"><button class="speed" id="playerSpeed" aria-label="播放速度">'+app.speed+'×</button></div>';
+  $('playerToggle').onclick=toggleAudio;$('playerSpeed').onclick=showPlaybackOptions;
   $('seek').oninput=()=>{playerSeeking=true;updateProgress()};
   $('seek').onchange=e=>{if(Number.isFinite(audio.duration)&&audio.duration>0)audio.currentTime=Number(e.target.value)*audio.duration/1000;playerSeeking=false;updateProgress()};
   $('seek').onblur=()=>{playerSeeking=false;updateProgress()};
  }
  const c=playingId?cards.find(c=>c.id===playingId):current();
  $('playerTitle').textContent=c?.title||c?.question||'';
- $('playerToggle').textContent=playingId&&!audio.paused?'Ⅱ':'▶';$('playerSpeed').value=String(app.speed);
+ $('playerToggle').textContent=playingId&&!audio.paused?'Ⅱ':'▶';$('playerSpeed').textContent=app.speed+'×';
  $('seek').disabled=!playingId||!Number.isFinite(audio.duration)||audio.duration<=0;updateProgress();
 }
 function updateProgress(){if(!$('seek'))return;const duration=playingId&&Number.isFinite(audio.duration)?audio.duration:0,position=playingId?audio.currentTime:0;if(!playerSeeking)$('seek').value=duration?Math.round(position/duration*1000):0;$('playerTime').textContent=fmtTime(playerSeeking?Number($('seek').value)*duration/1000:position)+' / '+fmtTime(duration)}
@@ -248,12 +304,12 @@ audio.ontimeupdate=updateProgress;audio.onplay=updatePlayer;audio.onpause=update
 audio.onerror=()=>{toast('录音加载失败');updatePlayer()};
 audio.onended=()=>{if(playList.length){playAt=(playAt+1)%playList.length;loadTrack()}else updatePlayer()};
 function download(name,text,type){const a=document.createElement('a'),url=URL.createObjectURL(new Blob([text],{type:type||'application/json;charset=utf-8'}));a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000)}
-function exportBackup(){let legacy=null;try{legacy=JSON.parse(localStorage.getItem(LEGACY)||'null')}catch(e){}const list=Object.entries(reviews).map(([id,r])=>({card_id:id,score:r.score,review_count:r.reviewCount,last_rating:r.lastRating,last_yes_day:r.lastYesDay,due_at:r.dueAt,last_review_at:r.lastReviewAt,needs_review:!!r.needsReview,content_sig:r.contentSig}));download('政治背诵_成组备份_'+day(Date.now())+'.json',JSON.stringify({kind:'politics-memory-backup',schema_version:1,exported_at:Date.now(),packs:[{...PACK,cards}],reviews:list,events,wrong_ids:[...wrong],preferences:{goal:app.goal,speed:app.speed,show_answer:app.show},legacy_atomic_preview:legacy},null,2));toast('备份已导出')}
+function exportBackup(){let legacy=null;try{legacy=JSON.parse(localStorage.getItem(LEGACY)||'null')}catch(e){}const list=Object.entries(reviews).map(([id,r])=>({card_id:id,score:r.score,review_count:r.reviewCount,last_rating:r.lastRating,last_yes_day:r.lastYesDay,due_at:r.dueAt,last_review_at:r.lastReviewAt,needs_review:!!r.needsReview,content_sig:r.contentSig}));download('政治背诵_成组备份_'+day(Date.now())+'.json',JSON.stringify({kind:'politics-memory-backup',schema_version:1,exported_at:Date.now(),packs:Object.values(packCatalog).map(p=>({...p,schema_version:1,cards:cards.filter(c=>(c.pack_id||PACK.pack_id)===p.pack_id)})),reviews:list,events,wrong_ids:[...wrong],preferences:{goal:app.goal,speed:app.speed,show_answer:app.show},legacy_atomic_preview:legacy},null,2));toast('备份已导出')}
 function exportCSV(){const q=x=>'"'+String(x??'').replaceAll('"','""')+'"';const rows=[['id','subject','chapter','topic','title','question','answer','notes','score','review_count','last_rating','last_review_at','due_at','needs_review','wrong_question']];for(const c of cards){const r=state(c);rows.push([c.id,...c.path,c.title,c.question,c.answer,c.notes,r.score,r.reviewCount,r.lastRating,r.lastReviewAt,r.dueAt,!!r.needsReview,wrong.has(c.id)])}download('政治背诵_成组进度.csv','\ufeff'+rows.map(r=>r.map(q).join(',')).join('\r\n'),'text/csv;charset=utf-8')}
-$('import').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{if(f.size>30000000)throw Error('JSON文件超过30MB');const o=JSON.parse(await f.text());let packs=o.kind==='politics-memory-backup'?o.packs:[o];packs=packs.filter(p=>p.pack_id!=='politics-sixiu-k');if(!Array.isArray(packs)||!packs.length||packs.some(p=>p.schema_version!==1||!Array.isArray(p.cards)||p.cards.some(c=>!validCard(c))))throw Error('素材格式不完整');if(!confirm('将素材合并到当前网页，保留较新的学习记录？'))return;const incoming=packs.flatMap(p=>p.cards);mergeCards(incoming);const imported=new Map(imports.map(c=>[c.id,c]));for(const c of incoming){const prev=imported.get(c.id);if(!prev||(c.revision||1)>=(prev.revision||1))imported.set(c.id,c)}imports=[...imported.values()];if(o.kind==='politics-memory-backup'){for(const r of o.reviews||[]){if(!r||typeof r.card_id!=='string')continue;const old=reviews[r.card_id];const at=Number(r.last_review_at)||0;if(!old||at>old.lastReviewAt){reviews[r.card_id]={score:Math.max(0,Math.min(4,Number(r.score)||0)),reviewCount:Math.max(0,Number(r.review_count)||0),lastRating:['no','fuzzy','yes'].includes(r.last_rating)?r.last_rating:'',lastYesDay:r.last_yes_day||'',lastReviewAt:at,dueAt:Number(r.due_at)||0,needsReview:!!r.needs_review,contentSig:r.content_sig||''}}}const known=new Set(events.map(x=>x.id));for(const x of o.events||[])if(x&&x.id&&!known.has(x.id)){events.push(x);known.add(x.id)}for(const id of o.wrong_ids||[])if(typeof id==='string')wrong.add(id);if(Object.prototype.hasOwnProperty.call(o,'legacy_atomic_preview')){try{if(o.legacy_atomic_preview===null)localStorage.removeItem(LEGACY);else localStorage.setItem(LEGACY,JSON.stringify(o.legacy_atomic_preview))}catch(e){toast('旧版记录已保留在备份文件中，但当前浏览器无法写入旧版记录')}}const pref=o.preferences||o.settings||{};const goal=pref.goal??pref.daily_goal;if(Number.isInteger(Number(goal))&&Number(goal)>=1&&Number(goal)<=500)app.goal=Number(goal);if(SPEEDS.includes(Number(pref.speed??pref.speech_speed)))app.speed=Number(pref.speed??pref.speech_speed);if(typeof pref.show_answer==='boolean')app.show=pref.show_answer;else if(pref.show_answer==='true'||pref.show_answer==='false')app.show=pref.show_answer==='true';audio.playbackRate=app.speed}for(const c of cards){const r=reviews[c.id];if(r&&r.contentSig&&r.contentSig!==sig(c))r.needsReview=true}const keep=current()?.id;app.session=cards.slice();app.index=Math.max(0,app.session.findIndex(c=>c.id===keep));persist();$('dialog').close();nav('books');toast('导入完成，较新的记录已保留')}catch(err){toast('导入失败：'+err.message)}finally{e.target.value=''}};
+$('import').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{if(f.size>30000000)throw Error('JSON文件超过30MB');const o=JSON.parse(await f.text());let packs=o.kind==='politics-memory-backup'?o.packs:[o];packs=packs.filter(p=>p.pack_id!=='politics-sixiu-k');if(!Array.isArray(packs)||!packs.length||packs.some(p=>p.schema_version!==1||!Array.isArray(p.cards)||p.cards.some(c=>!validCard(c))))throw Error('素材格式不完整');if(!confirm('将素材合并到当前网页，保留较新的学习记录？'))return;const incoming=packs.flatMap(p=>p.cards.map(c=>({...c,pack_id:p.pack_id})));for(const p of packs)packCatalog[p.pack_id]={pack_id:p.pack_id,title:p.title||p.pack_id,pack_revision:p.pack_revision};mergeCards(incoming);const imported=new Map(imports.map(c=>[c.id,c]));for(const c of incoming){const prev=imported.get(c.id);if(!prev||(c.revision||1)>=(prev.revision||1))imported.set(c.id,c)}imports=[...imported.values()];if(o.kind==='politics-memory-backup'){for(const r of o.reviews||[]){if(!r||typeof r.card_id!=='string')continue;const old=reviews[r.card_id];const at=Number(r.last_review_at)||0;if(!old||at>old.lastReviewAt){reviews[r.card_id]={score:Math.max(0,Math.min(4,Number(r.score)||0)),reviewCount:Math.max(0,Number(r.review_count)||0),lastRating:['no','fuzzy','yes'].includes(r.last_rating)?r.last_rating:'',lastYesDay:r.last_yes_day||'',lastReviewAt:at,dueAt:Number(r.due_at)||0,needsReview:!!r.needs_review,contentSig:r.content_sig||''}}}const known=new Set(events.map(x=>x.id));for(const x of o.events||[])if(x&&x.id&&!known.has(x.id)){events.push(x);known.add(x.id)}for(const id of o.wrong_ids||[])if(typeof id==='string')wrong.add(id);if(Object.prototype.hasOwnProperty.call(o,'legacy_atomic_preview')){try{if(o.legacy_atomic_preview===null)localStorage.removeItem(LEGACY);else localStorage.setItem(LEGACY,JSON.stringify(o.legacy_atomic_preview))}catch(e){toast('旧版记录已保留在备份文件中，但当前浏览器无法写入旧版记录')}}const pref=o.preferences||o.settings||{};const goal=pref.goal??pref.daily_goal;if(Number.isInteger(Number(goal))&&Number(goal)>=1&&Number(goal)<=500)app.goal=Number(goal);if(SPEEDS.includes(Number(pref.speed??pref.speech_speed)))app.speed=Number(pref.speed??pref.speech_speed);app.mode=0;app.show=false;audio.playbackRate=app.speed}for(const c of cards){const r=reviews[c.id];if(r&&r.contentSig&&r.contentSig!==sig(c))r.needsReview=true}const keep=current()?.id;app.session=cards.slice();app.index=Math.max(0,app.session.findIndex(c=>c.id===keep));persist();$('dialog').close();nav('books');toast('导入完成，较新的记录已保留')}catch(err){toast('导入失败：'+err.message)}finally{e.target.value=''}};
 document.addEventListener('keydown',e=>{if(app.tab!=='review'||$('dialog').open||e.target.closest('input,select,textarea')||e.ctrlKey||e.metaKey||e.altKey)return;if(e.code==='Space'){e.preventDefault();toggle()}else if(e.key==='ArrowLeft'){e.preventDefault();step(-1)}else if(e.key==='ArrowRight'){e.preventDefault();step(1)}else if(['1','2','3'].includes(e.key)){e.preventDefault();rate({1:'no',2:'fuzzy',3:'yes'}[e.key])}});
 $('dialog').addEventListener('click',e=>{if(e.target===$('dialog')){const r=$('dialog').getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)$('dialog').close()}});
 // Test hooks expose no network or user credentials. They exercise the same production paths.
-window.PoliticsMemory={version:11,fetchContentOnManualSync,sha256Hex,sha256Fallback,spokenText,syncData,progressSnapshot,applyProgress,getCards:()=>cards,getState:()=>({app,reviews,events,wrong:[...wrong]}),start:id=>{const c=cards.find(x=>x.id===id);if(c)setScope(cards.filter(x=>x.path.every((p,i)=>p===c.path[i])),c.path[2],id)},rate,toggle,step,nav,exportBackup,playCurrentAudio,toggleAudio,setSpeed,playQueue,getPlayback:()=>({playingId,source:playSource,queue:playList.map(c=>c.id),at:playAt,time:audio.currentTime,duration:audio.duration,paused:audio.paused,speed:audio.playbackRate})};
+window.PoliticsMemory={version:12,showPlaybackOptions,setVoice,voiceOptions,validMarks,fetchContentOnManualSync,sha256Hex,sha256Fallback,spokenText,syncData,progressSnapshot,applyProgress,getCards:()=>cards,getState:()=>({app,reviews,events,wrong:[...wrong]}),start:id=>{const c=cards.find(x=>x.id===id);if(c)setScope(cards.filter(x=>x.path.every((p,i)=>p===c.path[i])),c.path[2],id)},rate,toggle,step,nav,exportBackup,playCurrentAudio,toggleAudio,setSpeed,playQueue,getPlayback:()=>({playingId,source:playSource,queue:playList.map(c=>c.id),at:playAt,time:audio.currentTime,duration:audio.duration,paused:audio.paused,speed:audio.playbackRate})};
 render();bootSync();
 })();

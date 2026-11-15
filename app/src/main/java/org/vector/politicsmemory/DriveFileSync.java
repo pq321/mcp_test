@@ -62,8 +62,8 @@ final class DriveFileSync {
     }
     static final class Result {
         int reviews=0,added=0,updated=0,removed=0;
-        boolean contentChanged=false;
-        String message(){return "本机进度文件已更新 · "+reviews+"条；资料"+(contentChanged?"新增"+added+"，更新"+updated+"，停用"+removed:"无变化")+"。云盘实际上传由 Google Drive 完成。";}
+        boolean contentChanged=false,resourcesChanged=false;
+        String message(){return "本机进度文件已更新 · "+reviews+"条；资料"+(contentChanged?"新增"+added+"，更新"+updated+"，停用"+removed:"无变化")+(resourcesChanged?"；声音/标注已更新":"")+"。云盘实际上传由 Google Drive 完成。";}
     }
     static Result sync(Context ctx, StudyStore store) throws Exception {
         final String progressValue=prefs(ctx).getString(PROGRESS,"");
@@ -112,7 +112,7 @@ final class DriveFileSync {
             if(in==null)throw new IOException("无法读取 Drive 资料更新文件");
             try(FileOutputStream out=new FileOutputStream(staged)){
                 byte[] buffer=new byte[8192];int n;long size=0;
-                while((n=in.read(buffer))!=-1){size+=n;if(size>250L*1024*1024)throw new IOException("更新包超过250MB限制");out.write(buffer,0,n);}
+                while((n=in.read(buffer))!=-1){size+=n;if(size>ResourceImporter.LIMIT)throw new IOException("更新包超过1GB限制");out.write(buffer,0,n);}
                 out.getFD().sync();
             }
         }
@@ -120,7 +120,7 @@ final class DriveFileSync {
             String sha=AudioZipImporter.digestFileForSync(staged);
             if(!sha.equals(store.setting("drive_content_sha",""))){
                 ContentUpdate.Result change=ContentUpdate.apply(ctx,staged,store);
-                result.contentChanged=change.changed;
+                result.contentChanged=change.changed;result.resourcesChanged=change.resourcesChanged;
                 result.added=change.added;result.updated=change.updated;result.removed=change.removed;
                 store.saveSetting("drive_content_sha",sha);
             }

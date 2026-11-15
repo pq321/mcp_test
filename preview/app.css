@@ -9,3 +9,7 @@
 /* 0.10: smaller reading text; keep original tap target sizes and system zoom. */
 .title{font-size:17px}.question{font-size:11px;line-height:1.8}.answer{font-size:14px;line-height:1.85}.answer p{margin-bottom:14px}.answer .line{margin-bottom:9px}
 #connection,#pairCode{display:block;width:100%;font-size:12px;min-height:40px}.note{font-size:9px}
+
+/* v0.12: scoped study annotations and the existing speed menu's voice section. */
+.study-core{background:#fff0b3;font-weight:700}.study-confusion{color:#b23b3b;font-weight:700}.study-condition{color:#286a9a}.study-blank{color:#778282;white-space:nowrap}.wrong-before{text-decoration:underline dotted #87918d;text-underline-offset:5px}
+.player-controls button.speed{width:57px;font-size:12px}#voiceOptions>summary{font-size:14px;color:var(--teal);padding:13px 0;cursor:pointer}#voiceOptions .menu-item{padding-left:12px}.playback-option{min-height:40px}

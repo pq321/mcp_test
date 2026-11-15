@@ -56,6 +56,8 @@ public final class MainActivity extends Activity {
     private FrameLayout content;
     private int currentTab=1;
     private boolean showAnswer=false;
+    private int studyMode=0; // 0 recall, 1 complete, 2 cloze; cold starts always recall.
+    private StudyResources studyResources;
     private ArrayList<StudyCard> session=new ArrayList<>();
     private SwipePagerLayout pager;
     private String catalogueFilter="";
@@ -69,7 +71,7 @@ public final class MainActivity extends Activity {
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         store=new StudyStore(this);
         dailyGoal=parseGoal(store.setting("daily_goal","25"));
-        showAnswer="true".equals(store.setting("show_answer","false"));
+        studyMode=0;showAnswer=false;studyResources=new StudyResources(this,store);
         buildRoot();
         switchTab(1);
         // Install or upgrade the bundled Su Yi heading map; never delete local ratings.
@@ -226,7 +228,7 @@ public final class MainActivity extends Activity {
                        .setNeutralButton("重新选择文件",(d,w)->confirmReconnectDrive())
                        .setNegativeButton("关闭",null).show();
                 }else{
-                    int was=currentTab;switchTab(was);
+                    studyResources=new StudyResources(this,store);int was=currentTab;switchTab(was);
                     Toast.makeText(this,outcome.message(),Toast.LENGTH_LONG).show();
                 }
             });
@@ -265,13 +267,29 @@ public final class MainActivity extends Activity {
     private void changeSpeechSpeed(){
         final float[] values={0.75f,1f,1.25f,1.5f,1.75f,2f,2.5f,3f,3.5f,4f};
         String[] labels={"0.75×","1.0×","1.25×","1.5×","1.75×","2.0×","2.5×","3.0×","3.5×","4.0×"};
-        int selected=1;for(int i=0;i<values.length;i++)if(Math.abs(values[i]-speechSpeed())<0.001f)selected=i;
-        new AlertDialog.Builder(this).setTitle("朗读倍速").setSingleChoiceItems(labels,selected,(dialog,which)->{
-            float speed=values[which];store.saveSetting("speech_speed",Float.toString(speed));
-            if(SpeechService.active){Intent i=new Intent(this,SpeechService.class);i.setAction(SpeechService.SET_SPEED);i.putExtra(SpeechService.EXTRA_SPEED,speed);startService(i);}
-            dialog.dismiss();Toast.makeText(this,"已设置为 "+labels[which],Toast.LENGTH_SHORT).show();
-            refreshPlayerBar();
-        }).setNegativeButton("取消",null).show();
+        ScrollView scroll=new ScrollView(this);LinearLayout choices=column();padding(choices,18,0,18,4);scroll.addView(choices);
+        android.widget.RadioGroup speeds=new android.widget.RadioGroup(this);choices.addView(speeds);
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("朗读倍速").setView(scroll).setNegativeButton("取消",null).create();
+        for(int n=0;n<values.length;n++){
+            final float speed=values[n];final String label=labels[n];
+            android.widget.RadioButton b=new android.widget.RadioButton(this);b.setText(label);b.setTextSize(14);b.setId(View.generateViewId());speeds.addView(b,lp(-1,44));
+            b.setChecked(Math.abs(speed-speechSpeed())<0.001f);
+            b.setOnClickListener(v->{store.saveSetting("speech_speed",Float.toString(speed));
+                if(SpeechService.active){Intent i=new Intent(this,SpeechService.class);i.setAction(SpeechService.SET_SPEED);i.putExtra(SpeechService.EXTRA_SPEED,speed);startService(i);}
+                dialog.dismiss();Toast.makeText(this,"已设置为 "+label,Toast.LENGTH_SHORT).show();refreshPlayerBar();});
+        }
+        TextView label=text("▸ 声音",14,TEAL,false);label.setGravity(Gravity.CENTER_VERTICAL);label.setContentDescription("声音");choices.addView(label,lp(-1,44));
+        android.widget.RadioGroup voices=new android.widget.RadioGroup(this);voices.setVisibility(View.GONE);choices.addView(voices);
+        String selected=store.setting("speech_voice","default");
+        if(studyResources.voice(selected)==null)selected="default";
+        for(StudyResources.Voice voice:studyResources.voices()){
+            android.widget.RadioButton b=new android.widget.RadioButton(this);b.setText(voice.name);b.setTextSize(14);b.setId(View.generateViewId());voices.addView(b,lp(-1,44));b.setChecked(voice.id.equals(selected));
+            b.setOnClickListener(v->{store.saveSetting("speech_voice",voice.id);
+                if(SpeechService.active){Intent i=new Intent(this,SpeechService.class);i.setAction(SpeechService.SET_VOICE);startService(i);}
+                dialog.dismiss();Toast.makeText(this,"全局声音："+voice.name,Toast.LENGTH_SHORT).show();});
+        }
+        label.setOnClickListener(v->{boolean open=voices.getVisibility()!=View.VISIBLE;voices.setVisibility(open?View.VISIBLE:View.GONE);label.setText(open?"▾ 声音":"▸ 声音");if(open)scroll.post(()->scroll.smoothScrollTo(0,choices.getHeight()));});
+        dialog.show();
     }
     /** Play all cards from this heading, then continue to the following headings. */
     private TextView playButton(Runnable start){
@@ -335,10 +353,20 @@ public final class MainActivity extends Activity {
 
         LinkedHashMap<String,LinkedHashMap<String,LinkedHashMap<String,ArrayList<StudyCard>>>> groups=group(all);
         if(groups.isEmpty()){body.addView(text("暂无资料，请从同步入口导入。",15,MUTED,false));return;}
-        for(Map.Entry<String,LinkedHashMap<String,LinkedHashMap<String,ArrayList<StudyCard>>>> subject:groups.entrySet()){
-            ArrayList<StudyCard> sCards=select(all,subject.getKey(),null,null);
+        LinkedHashMap<String,ArrayList<StudyCard>> sources=new LinkedHashMap<>();
+        for(StudyCard c:all)sources.computeIfAbsent(c.packId,k->new ArrayList<>()).add(c);
+        for(Map.Entry<String,ArrayList<StudyCard>> source:sources.entrySet()){
+            String sourceId=source.getKey(),sourceKey="open_pack_"+sourceId;
+            String sourcePrefix=sourceId.equals("politics-suyi-full")?"":sourceId+"_";
+            ArrayList<StudyCard> sourceCards=source.getValue();
+            LinearLayout sourceBody=column();boolean sourceExpanded="1".equals(store.setting(sourceKey,"0"));sourceBody.setVisibility(sourceExpanded?View.VISIBLE:View.GONE);
+            String sourceName=studyResources.sourceName(sourceId,store.packTitle(sourceId));
+            TextView sourceTitle=text((sourceExpanded?"▾  ":"▸  ")+sourceName,15,DARK,true);sourceTitle.setGravity(Gravity.CENTER_VERTICAL);padding(sourceTitle,2,0,2,0);body.addView(sourceTitle,lp(-1,40));body.addView(sourceBody);
+            sourceTitle.setOnClickListener(v->{boolean expanded=sourceBody.getVisibility()!=View.VISIBLE;sourceBody.setVisibility(expanded?View.VISIBLE:View.GONE);sourceTitle.setText((expanded?"▾  ":"▸  ")+sourceName);store.saveSetting(sourceKey,expanded?"1":"0");});
+        for(Map.Entry<String,LinkedHashMap<String,LinkedHashMap<String,ArrayList<StudyCard>>>> subject:group(sourceCards).entrySet()){
+            ArrayList<StudyCard> sCards=select(sourceCards,subject.getKey(),null,null);
             LinearLayout card=column();padding(card,2,2,2,2);
-            String key="open_sub_"+subject.getKey();
+            String key=sourcePrefix+"open_sub_"+subject.getKey();
             LinearLayout inner=column();
             boolean expanded="1".equals(store.setting(key,"0"));inner.setVisibility(expanded?View.VISIBLE:View.GONE);
             LinearLayout sHeader=row();
@@ -350,9 +378,9 @@ public final class MainActivity extends Activity {
                 inner.setVisibility(open?View.VISIBLE:View.GONE);st.setText((open?"▾  ":"▸  ")+subject.getKey());
                 store.saveSetting(key,open?"1":"0");});
             for(Map.Entry<String,LinkedHashMap<String,ArrayList<StudyCard>>> chapter:subject.getValue().entrySet()){
-                ArrayList<StudyCard> cCards=select(all,subject.getKey(),chapter.getKey(),null);
+                ArrayList<StudyCard> cCards=select(sourceCards,subject.getKey(),chapter.getKey(),null);
                 LinearLayout cBlock=column();
-                String cKey="open_ch_"+subject.getKey()+"_"+chapter.getKey();
+                String cKey=sourcePrefix+"open_ch_"+subject.getKey()+"_"+chapter.getKey();
                 boolean cExpand="1".equals(store.setting(cKey,"0"));
                 LinearLayout cHeader=row();padding(cHeader,10,0,0,0);
                 TextView ct=text((cExpand?"▾  ":"▸  ")+chapter.getKey(),14,DARK,false);
@@ -368,7 +396,7 @@ public final class MainActivity extends Activity {
                     ArrayList<StudyCard> tCards=topic.getValue();Summary ts=summary(tCards);
                     LinearLayout tRow=row();padding(tRow,20,0,0,0);
                     LinearLayout labels=column();
-                    String tKey="open_topic_"+subject.getKey()+"_"+chapter.getKey()+"_"+topic.getKey();
+                    String tKey=sourcePrefix+"open_topic_"+subject.getKey()+"_"+chapter.getKey()+"_"+topic.getKey();
                     boolean tExpanded="1".equals(store.setting(tKey,"0"));
                     TextView tTitle=text((tExpanded?"▾  ":"▸  ")+topic.getKey(),14,DARK,false);
                     labels.addView(tTitle);
@@ -391,7 +419,8 @@ public final class MainActivity extends Activity {
                 }
                 inner.addView(cBlock);
             }
-            body.addView(card);spacer(body,2);
+            sourceBody.addView(card);spacer(sourceBody,2);
+        }
         }
         spacer(body,4);
         ArrayList<StudyCard> wrong=store.wrongCards(),weak=store.weakCards();
@@ -525,17 +554,17 @@ public final class MainActivity extends Activity {
         LinearLayout bar=row();padding(bar,18,3,14,3);
         TextView back=text("‹",28,MUTED,false);back.setContentDescription("返回资料");back.setGravity(Gravity.CENTER);bar.addView(back,lp(36,42));back.setOnClickListener(v->switchTab(1));
         TextView counter=text((index+1)+" / "+session.size(),11,MUTED,false);bar.addView(counter,new LinearLayout.LayoutParams(0,-2,1));
-        TextView reveal=text(showAnswer?"收起":"揭晓",12,TEAL,false);padding(reveal,8,8,8,8);bar.addView(reveal);reveal.setOnClickListener(v->toggleAnswer());
+        TextView reveal=text(studyMode==0?"揭晓":studyMode==1?"挖空":"回忆",12,TEAL,false);padding(reveal,8,8,8,8);bar.addView(reveal);reveal.setOnClickListener(v->toggleAnswer());
         TextView sync=text("同步",12,MUTED,false);padding(sync,8,8,8,8);bar.addView(sync);sync.setOnClickListener(v->showFileMenu());sync.setOnLongClickListener(v->{connectComputer();return true;});page.addView(bar);
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);page.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         LinearLayout body=column();padding(body,21,8,21,22);scroll.addView(body);
         body.addView(text(card.subject+" › "+card.chapter+" › "+card.topic,10,MUTED,false));spacer(body,9);
-        TextView title=text(card.displayTitle(),17,DARK,true);body.addView(title);spacer(body,7);
-        title.setOnLongClickListener(v->{store.setWrong(card.id,!card.wrongQuestion);card.wrongQuestion=!card.wrongQuestion;Toast.makeText(this,card.wrongQuestion?"已加入错题":"已移出错题",Toast.LENGTH_SHORT).show();return true;});
+        TextView title=text(card.displayTitle(),17,DARK,true);if(store.wasWrong(card.id))title.setText(StudyResources.wrongTitle(card.displayTitle()));body.addView(title);spacer(body,7);
+        title.setOnLongClickListener(v->{store.setWrong(card.id,!card.wrongQuestion);card.wrongQuestion=!card.wrongQuestion;title.setText(StudyResources.wrongTitle(card.displayTitle()));Toast.makeText(this,card.wrongQuestion?"已加入错题":"已移出错题",Toast.LENGTH_SHORT).show();return true;});
         TextView question=text(card.question,11,0xff778282,false);question.setLineSpacing(dp(2),1.15f);body.addView(question);spacer(body,14);
         View divider=new View(this);divider.setBackgroundColor(0xffe9eceb);body.addView(divider,lp(-1,1));spacer(body,15);
         if(showAnswer){
-            TextView answer=text(card.answer,14,DARK,false);answer.setLineSpacing(dp(3),1.10f);answer.setOnClickListener(v->toggleAnswer());body.addView(answer);
+            TextView answer=text("",14,DARK,false);answer.setText(studyResources.answer(card,studyMode==2));answer.setContentDescription(studyMode==2?"挖空版":"完整展示");answer.setLineSpacing(dp(3),1.10f);answer.setOnClickListener(v->toggleAnswer());body.addView(answer);
             if(card.notes!=null&&!card.notes.trim().isEmpty()){spacer(body,13);TextView note=text(card.notes,9,0xffb54444,false);body.addView(note);}
         }else{
             TextView hint=text("先回忆，再点击揭晓",13,0xffa1a7a7,false);hint.setGravity(Gravity.CENTER);body.addView(hint,lp(-1,190));hint.setOnClickListener(v->toggleAnswer());
@@ -547,7 +576,7 @@ public final class MainActivity extends Activity {
         page.addView(rating);return page;
     }
     private void toggleAnswer(){
-        showAnswer=!showAnswer;store.saveSetting("show_answer",showAnswer?"true":"false");
+        studyMode=(studyMode+1)%3;showAnswer=studyMode!=0;
         if(pager!=null)pager.refresh();
     }
     private void rateCurrent(StudyCard c,String choice){
@@ -637,7 +666,7 @@ public final class MainActivity extends Activity {
                         JSONObject obj=new JSONObject(StudyStore.readText(in,20*1024*1024));
                         outcome=store.importPayload(obj);
                     }
-                    runOnUiThread(()->{catalogueFilter="";dailyGoal=parseGoal(store.setting("daily_goal","25"));showAnswer="true".equals(store.setting("show_answer","false"));switchTab(1);inform("导入完成："+outcome);});
+                    runOnUiThread(()->{catalogueFilter="";dailyGoal=parseGoal(store.setting("daily_goal","25"));studyMode=0;showAnswer=false;studyResources=new StudyResources(this,store);switchTab(1);inform("导入完成："+outcome);});
                 }catch(Exception e){runOnUiThread(()->error("导入失败（未写入半份资料）："+e.getMessage()));}
             }).start();
         }else if(req==EXPORT_JSON||req==EXPORT_CSV){

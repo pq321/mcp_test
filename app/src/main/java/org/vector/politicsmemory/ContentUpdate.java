@@ -17,10 +17,11 @@ import java.util.zip.ZipInputStream;
  */
 final class ContentUpdate {
     static final class Result {
-        boolean changed;
+        boolean changed,resourcesChanged;
         int added,updated,removed;
     }
     static Result apply(Context context,File file,StudyStore store)throws Exception{
+        if(ResourceImporter.isResource(file))return ResourceImporter.apply(context,file,store);
         Result out=new Result();boolean pack=false,meta=false,index=false;
         String updateText=null;
         Set<String> seen=new HashSet<>();

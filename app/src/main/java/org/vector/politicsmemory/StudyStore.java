@@ -111,6 +111,7 @@ final class StudyStore extends SQLiteOpenHelper {
         if(v.isEmpty() || v.length()>maxLen) throw new JSONException("字段 " + key + " 不能为空或超出长度 " + maxLen);
         return v;
     }
+    static void validateOnly(JSONObject obj)throws JSONException{validatePack(obj);}
     private static Pack validatePack(JSONObject obj) throws JSONException {
         if(obj.optInt("schema_version",-1)!=1) throw new JSONException("不支持的数据格式版本（需要 schema_version:1）");
         Pack pack=new Pack();
@@ -121,7 +122,7 @@ final class StudyStore extends SQLiteOpenHelper {
         pack.revision=obj.optInt("pack_revision",1);
         if(pack.revision<1) throw new JSONException("pack_revision 应大于零");
         JSONArray array=obj.getJSONArray("cards");
-        if(array.length()==0||array.length()>20000) throw new JSONException("单包条目数应在1至20000之间");
+        if(array.length()>20000) throw new JSONException("单包条目数应在0至20000之间；空的新版本表示停用该资料包");
         Set<String> unique=new HashSet<>();
         for(int i=0;i<array.length();i++) {
             JSONObject item=array.getJSONObject(i); StudyCard c=new StudyCard();
@@ -243,6 +244,13 @@ final class StudyStore extends SQLiteOpenHelper {
     StudyCard findCard(List<StudyCard> all,String id) {
         for(StudyCard c:all) if(c.id.equals(id)) return c;
         return null;
+    }
+    String packTitle(String id){
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT title FROM packs WHERE id=?",new String[]{id})){return c.moveToFirst()?c.getString(0):id;}
+    }
+    boolean wasWrong(String id){
+        if(isWrong(id))return true;
+        try{return new JSONObject(setting("wrong_sync_changes","{}")).has(id);}catch(JSONException e){return false;}
     }
     boolean isWrong(String id) {
         try(Cursor c=getReadableDatabase().rawQuery("SELECT 1 FROM wrong_cards WHERE card_id=?",new String[]{id})) { return c.moveToFirst(); }

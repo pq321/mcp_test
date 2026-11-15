@@ -22,6 +22,7 @@ import java.util.Map;
 
 /** Foreground offline playback of prerendered MP3. No network or on-device TTS. */
 public final class SpeechService extends Service {
+    static final String SET_VOICE="org.vector.politicsmemory.SET_VOICE";
     static final String PLAY="org.vector.politicsmemory.PLAY";
     static final String TOGGLE="org.vector.politicsmemory.TOGGLE";
     static final String STOP="org.vector.politicsmemory.STOP";
@@ -74,6 +75,11 @@ public final class SpeechService extends Service {
         }
         if(TOGGLE.equals(action)){
             if(active){if(paused)resumePlayback();else pausePlayback();}
+            return START_NOT_STICKY;
+        }
+        if(SET_VOICE.equals(action)){
+            catalogue=new AudioCatalog(this);generation++;
+            if(active&&!playlist.isEmpty())playCurrent();
             return START_NOT_STICKY;
         }
         if(!PLAY.equals(action))return START_NOT_STICKY;

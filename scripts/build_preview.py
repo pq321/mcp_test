@@ -44,6 +44,7 @@ def main():
         audio_hash = hashlib.sha256(audio_path.read_bytes()).hexdigest()
         if entry.get('audio_sha256') != audio_hash:
             raise SystemExit(f'Corrupt audio file: {audio_path}')
+    resources = json.loads((root / 'data' / 'study-resources.json').read_text(encoding='utf-8'))
     css = (root / 'preview' / 'app.css').read_text(encoding='utf-8')
     js = (root / 'preview' / 'app.js').read_text(encoding='utf-8')
     out = Path(args.out)
@@ -59,17 +60,17 @@ def main():
 <div id="app"><header id="toolbar"></header><main id="main"></main><section id="ratings"></section><section id="player" hidden aria-label="播放器"></section><nav id="nav"></nav></div>
 <div id="toast" role="status" aria-live="polite"></div><dialog id="dialog"></dialog>
 <input id="import" type="file" accept=".json,application/json" hidden>
-<script>window.POLITICS_PACK={safe_json(pack)};window.POLITICS_AUDIO_INDEX={safe_json(index)};</script>
+<script>window.POLITICS_PACK={safe_json(pack)};window.POLITICS_AUDIO_INDEX={safe_json(index)};window.POLITICS_STUDY_RESOURCES={safe_json(resources)};</script>
 <script>{js}</script></body></html>'''
     (out / 'index.html').write_text(html, encoding='utf-8')
     (out / 'audio-index.json').write_text(json.dumps(index, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     (out / 'README.txt').write_text(
-        'PoliticsMemory v0.11 desktop preview\n'
+        'PoliticsMemory v0.12 desktop preview\n'
         'Open index.html for offline study, or start-sync.cmd to use the local sync receiver. Keep audio/ beside index.html.\n'
         'For Drive sync, select the Google Drive desktop folder that contains progress.json and content-update.zip. Only clicking Sync reads or writes these files.\n'
         'On Android v0.11, select these same two files using the phone system file picker; a desktop connection code is not needed. Google Drive handles cloud uploads separately. See README.md for setup.\n',
         encoding='utf-8')
-    for name in ['progress_server.py','start-sync.cmd','start-sync.sh']:
+    for name in ['progress_server.py','study_resource_bundle.py','start-sync.cmd','start-sync.sh']:
         shutil.copy2(root/'desktop'/name,out/name)
     print(f'PASS: built self-contained preview for {len(cards)} cards and {len(items)} verified audio clips')
 

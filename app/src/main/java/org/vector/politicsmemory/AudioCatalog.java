@@ -21,11 +21,14 @@ import java.util.Map;
 final class AudioCatalog {
     private static final String TAG="PoliticsAudio";
     private final Context ctx;
+    private final StudyResources resources;
+    private final String selectedVoice;
     private final Map<String,Entry> builtin=new HashMap<>();
     private final Map<String,Entry> imported=new HashMap<>();
     private static final class Entry {String file, textHash;Entry(String f,String h){file=f;textHash=h;}}
     AudioCatalog(Context context){
         ctx=context.getApplicationContext();
+        StudyStore store=new StudyStore(ctx);try{resources=new StudyResources(ctx,store);selectedVoice=store.setting("speech_voice","default");}finally{store.close();}
         try(InputStream in=ctx.getAssets().open("audio-index.json")){load(in,builtin);}
         catch(Exception e){Log.w(TAG,"No bundled audio index",e);}
         File file=new File(ctx.getFilesDir(),"audio-index.json");
@@ -54,7 +57,15 @@ final class AudioCatalog {
             if(file.equals("audio/"+id+".mp3") && hash.matches("[0-9a-f]{64}"))into.put(id,new Entry(file,hash));
         }
     }
+    private Entry voiceEntry(String id,StudyCard c){
+        JSONObject v=resources.audio(id,c.id);if(v==null)return null;
+        String path=v.optString("file"),hash=v.optString("text_sha256");
+        if(!path.matches("audio/[A-Za-z0-9._-]{1,128}/[0-9]+/[A-Za-z0-9._-]{1,128}\\.mp3"))return null;
+        return hash.equals(contentHash(c))&&new File(ctx.getFilesDir(),path).isFile()?new Entry(path,hash):null;
+    }
+    private Entry selectedEntry(StudyCard c){Entry e=voiceEntry(selectedVoice,c);return e!=null?e:voiceEntry("default",c);}
     boolean ready(StudyCard c){
+        if(selectedEntry(c)!=null)return true;
         String hash=contentHash(c);
         Entry entry=imported.get(c.id);
         if(entry!=null&&entry.textHash.equals(hash)&&new File(ctx.getFilesDir(),entry.file).isFile())return true;
@@ -63,6 +74,10 @@ final class AudioCatalog {
     }
     /** Sets MP3 file descriptor before MediaPlayer.prepareAsync(). */
     boolean attach(MediaPlayer player,StudyCard c){
+        Entry custom=selectedEntry(c);
+        if(!selectedVoice.equals("default")&&voiceEntry(selectedVoice,c)==null)
+            android.widget.Toast.makeText(ctx,"所选声音未覆盖本组，使用默认声音",android.widget.Toast.LENGTH_SHORT).show();
+        if(custom!=null){try{player.setDataSource(new File(ctx.getFilesDir(),custom.file).getAbsolutePath());return true;}catch(Exception e){Log.e(TAG,"Voice audio failed",e);}}
         String hash=contentHash(c);Entry entry=imported.get(c.id);
         if(entry!=null&&entry.textHash.equals(hash)){
             File file=new File(ctx.getFilesDir(),entry.file);
