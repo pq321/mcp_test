@@ -19,6 +19,8 @@ jobs:
           python-version: '3.11'
       - name: Install speech client
         run: python -m pip install --disable-pip-version-check edge-tts
+      - name: Install MP3 decoder for audible verification
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - name: Generate 3 voices x 3 real cards
         run: python -u scripts/generate_shanbei_three_voices.py --mode pilot --out private-voices
       - uses: actions/upload-artifact@v4
