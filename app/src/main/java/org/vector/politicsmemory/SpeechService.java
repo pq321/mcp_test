@@ -56,7 +56,7 @@ public final class SpeechService extends Service {
     @Override public void onCreate(){
         super.onCreate();
         if(Build.VERSION.SDK_INT>=26){
-            NotificationChannel ch=new NotificationChannel(CHANNEL,"政治背诵朗读",NotificationManager.IMPORTANCE_LOW);
+            NotificationChannel ch=new NotificationChannel(CHANNEL,"闪背朗读",NotificationManager.IMPORTANCE_LOW);
             ch.setDescription("内置音频连续朗读，息屏仍可暂停和停止");
             NotificationManager m=getSystemService(NotificationManager.class);
             if(m!=null)m.createNotificationChannel(ch);
@@ -183,7 +183,7 @@ public final class SpeechService extends Service {
         Notification.Builder b=Build.VERSION.SDK_INT>=26?new Notification.Builder(this,CHANNEL):new Notification.Builder(this);
         Intent open=new Intent(this,MainActivity.class);open.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP|Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent show=PendingIntent.getActivity(this,0,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
-        b.setContentTitle(paused?"政治背诵 · 已暂停":"政治背诵 · 内置音频播放中")
+        b.setContentTitle(paused?"闪背 · 已暂停":"闪背 · 内置音频播放中")
          .setContentText(label+" · "+String.format(java.util.Locale.CHINA,"%.2f×",speed)).setSmallIcon(android.R.drawable.ic_media_play).setContentIntent(show)
          .setOngoing(!paused).setOnlyAlertOnce(true).setVisibility(Notification.VISIBILITY_PUBLIC)
          .addAction(paused?android.R.drawable.ic_media_play:android.R.drawable.ic_media_pause,
