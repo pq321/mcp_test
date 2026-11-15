@@ -1,0 +1,21 @@
+name: PoliticsMemory v0.12 study controls
+on:
+  push:
+    branches: [feature/v012-study-controls]
+    paths: [.github/workflows/v012-study-controls.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source_snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Export exact existing source and offline media
+        run: git archive --format=zip HEAD -o politics-source.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: politics-v012-source
+          path: politics-source.zip
+          retention-days: 3
