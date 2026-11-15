@@ -45,6 +45,9 @@ def main():
         if entry.get('audio_sha256') != audio_hash:
             raise SystemExit(f'Corrupt audio file: {audio_path}')
     resources = json.loads((root / 'data' / 'study-resources.json').read_text(encoding='utf-8'))
+    # Both entrypoints use the exact same validated source. A real newline here
+    # avoids the old literal backslash-n suffix that made full-data.js invalid JS.
+    (root / 'preview' / 'full-data.js').write_text('window.POLITICS_PACK=' + safe_json(pack) + ';\n', encoding='utf-8')
     css = (root / 'preview' / 'app.css').read_text(encoding='utf-8')
     js = (root / 'preview' / 'app.js').read_text(encoding='utf-8')
     out = Path(args.out)
@@ -77,4 +80,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
