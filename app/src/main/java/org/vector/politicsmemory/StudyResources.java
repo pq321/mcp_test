@@ -87,6 +87,46 @@ final class StudyResources {
         if(cloze&&marks.length()==0)out.append("\n\n本组尚未提供匹配的挖空标记。");
         return out;
     }
+    /** Exact original-source layout; no source text is stored or rewritten in the sidecar. */
+    JSONArray presentation(StudyCard card,boolean brief){
+        JSONObject anns=data.optJSONObject("annotations"),a=anns==null?null:anns.optJSONObject(card.id);
+        if(a==null||!AudioCatalog.digest(card.answer.getBytes(StandardCharsets.UTF_8)).equals(a.optString("answer_sha256")))return null;
+        JSONArray blocks=a.optJSONArray(brief?"brief_layout":"full_layout");
+        return blocks!=null&&blocks.length()>0?blocks:null;
+    }
+    /** Render only literal spans of the original answer with the existing highlight colors. */
+    CharSequence styledParts(StudyCard card,JSONArray spans){
+        SpannableStringBuilder out=new SpannableStringBuilder();
+        if(spans==null)return out;
+        JSONArray highlights=marks(card);
+        for(int i=0;i<spans.length();i++){
+            JSONArray p=spans.optJSONArray(i);if(p==null||p.length()<2)continue;
+            int start=p.optInt(0,-1),end=p.optInt(1,-1);
+            if(start<0||end>card.answer.length()||end<=start)continue;
+            while(start<end&&Character.isWhitespace(card.answer.charAt(start)))start++;
+            while(end>start&&Character.isWhitespace(card.answer.charAt(end-1)))end--;
+            if(end<=start)continue;
+            if(out.length()>0)out.append(" · ");
+            int base=out.length();out.append(card.answer.substring(start,end));
+            for(int j=0;j<highlights.length();j++){
+                JSONObject m=highlights.optJSONObject(j);if(m==null)continue;
+                int a=Math.max(start,m.optInt("start",-1)),b=Math.min(end,m.optInt("end",-1));
+                if(a<start||b<=a)continue;
+                int from=base+a-start,to=base+b-start;
+                String kind=m.optString("kind");
+                if(kind.equals("core")){
+                    out.setSpan(new BackgroundColorSpan(0xfffff0b3),from,to,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    out.setSpan(new StyleSpan(Typeface.BOLD),from,to,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                }else if(kind.equals("confusion")){
+                    out.setSpan(new ForegroundColorSpan(0xffb23b3b),from,to,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    out.setSpan(new StyleSpan(Typeface.BOLD),from,to,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                }else if(kind.equals("condition"))
+                    out.setSpan(new ForegroundColorSpan(0xff286a9a),from,to,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+        }
+        return out;
+    }
+
     static CharSequence wrongTitle(String title){
         SpannableString s=new SpannableString(title);
         s.setSpan(new LineBackgroundSpan(){
