@@ -5,7 +5,7 @@
   "main_integrated": true,
   "original_cards": 561,
   "annotated_cards": 561,
-  "cloze_spans": 2536,
+  "cloze_spans": 5338,
   "production_voices": [
     "default"
   ],
@@ -14,8 +14,8 @@
     "preview/app.js": "e681db85f7c8cd4a1dd901d5a0d5928a8d6e7ff87cc91bcc2f0ef9f2f5189c6a",
     "preview/full-data.js": "a85e48fbf0f32dcb54bd2841a97778c1d4bcdfcf3f69ff3276b3ffc8fd5fc4b1",
     "data/suyi-full.json": "20b2236109e35b69244b7826da3e239a67b4f735e54f84977b5a6af0fa73d9e4",
-    "data/study-resources.json": "03419f4a66d151a7cafb5800ab8fa953833b340176a4231d3a8dcd077dbe4592",
-    "site/index.html": "e8e48da9ac0b1635fd9a8c9ff8da4c584bf868db8aedf968cd8d6346e8cdcd9d"
+    "data/study-resources.json": "30221709478c3001637544e2571bf5feceea1fef05c631b92859141a4a7bdc1a",
+    "site/index.html": "8050451e692ca7327f571ac5136da5a44cf158c73c9b89e4552e493b287dc8a0"
   },
   "limits": [
     "Course ASR context is not a complete teacher-emphasis audit",
@@ -43,5 +43,9 @@
     "reload_hidden_keeps_voice_progress_and_source_retirement": "PASS"
   },
   "signed_apk_sha256": "46e603b7d8f471b2dc605be52c47e1e2ce84a38c932cc10c79bc0ec565496214",
-  "web_zip_sha256": "fadddad0ccce5040011f756b06ed211930e7eafd5b523b3935fcfd0c8c62e3e4"
+  "web_zip_sha256": "b1a725b8ec054d1ab3403b42ca8ddf20ae0ff77e9a1f2128a5c1e257eb1033c9",
+  "annotation_edition": "cloze-r2-20261115",
+  "annotation_revision": 3,
+  "annotation_report": "docs/CLOZE_R2_ACCEPTANCE.json",
+  "phone_delivery": "Existing v0.12.1 receives R2 through manual content sync"
 }

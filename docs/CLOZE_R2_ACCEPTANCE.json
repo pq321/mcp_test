@@ -1,0 +1,43 @@
+{
+  "edition": "cloze-r2-20261115",
+  "annotation_revision": 3,
+  "cards": 561,
+  "subjects": {
+    "马原": 127,
+    "毛中特": 57,
+    "新思想": 177,
+    "史纲": 128,
+    "思修": 72
+  },
+  "cloze_spans": 5338,
+  "marks_by_kind": {
+    "core": 4959,
+    "confusion": 379,
+    "condition": 325
+  },
+  "per_card_goal_and_cues": "561/561",
+  "all_exact_spans_nonoverlapping": "PASS",
+  "original_pack_sha256": "20b2236109e35b69244b7826da3e239a67b4f735e54f84977b5a6af0fa73d9e4",
+  "resources_sha256": "30221709478c3001637544e2571bf5feceea1fef05c631b92859141a4a7bdc1a",
+  "scope": "Only explicit cloze/highlight metadata; no original text, runtime, audio, progress, source or voice changes",
+  "limits": [
+    "Original wording preserved, not a factual correction",
+    "Not a fresh teacher-emphasis certification",
+    "Physical phone sync not inspected"
+  ],
+  "workflow_run": "43701008714",
+  "editorial_source_commit": "ef57c53e642b06fad418a715dc470855b9a10243",
+  "manual_update_acceptance": {
+    "real_visible_sync_old_web_to_r2": "PASS",
+    "all_561_full_cloze_recall": "PASS",
+    "all_561_exact_imported_marks": "PASS",
+    "original_cards_reviews_events_wrong_flags_retained": "PASS",
+    "repeat_sync_no_duplicate_events": "PASS",
+    "reload_persists_r2_no_auto_sync": "PASS",
+    "physical_phone": "NOT_TESTED",
+    "data": "synthetic test records only"
+  },
+  "unchanged_runtime": "PASS: Java, UI JS/CSS/HTML template, original knowledge and audio index match the approved baseline",
+  "android_apk_rebuilt": false,
+  "update_zip_sha256": "d85a1a6b8f9f7854fbc7dcea029a43f8ee1e5d9af81058c1a2d9425f3a6d48cd"
+}
