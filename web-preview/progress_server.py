@@ -10,6 +10,7 @@ from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit, unquote, urlencode
+from study_resource_bundle import inspect_bundle
 
 MAX_BODY = 8 * 1024 * 1024
 ID = re.compile(r'^[A-Za-z0-9._-]{1,128}$')
@@ -127,6 +128,21 @@ class Receiver(ThreadingHTTPServer):
             meta=json.loads(z.read('update.json'))
             if meta.get('kind')!='politics-memory-content-update' or meta.get('schema_version')!=1:
                 raise ValueError('content-update.zip protocol mismatch')
+            if meta.get('resource_update'):
+                result=inspect_bundle(z)
+                # Install only during the explicit /api/content Sync request.
+                cache=self.data_dir/'study-audio'
+                for name,digest in result.pop('_audio_files').items():
+                    target=cache/name
+                    if target.is_file() and hashlib.sha256(target.read_bytes()).hexdigest()==digest:continue
+                    target.parent.mkdir(parents=True,exist_ok=True)
+                    temp=target.with_suffix('.mp3.pending')
+                    try:
+                        with z.open(name) as src,temp.open('wb') as out:shutil.copyfileobj(src,out)
+                        os.replace(temp,target)
+                    finally:
+                        if temp.exists():temp.unlink()
+                return result
             if 'pack.json' not in names:return {'kind':'politics-memory-content-update','status':'no-change','release':meta}
             if 'audio-index.json' not in names:raise ValueError('content-update.zip missing audio-index.json')
             pack=json.loads(z.read('pack.json'));audio=json.loads(z.read('audio-index.json'))
@@ -135,6 +151,10 @@ class Receiver(ThreadingHTTPServer):
             if len(pack.get('cards',[]))>20000:raise ValueError('content pack too large')
             return {'kind':'politics-memory-content-update','status':'available','release':meta,'pack':pack,'audio_index':audio}
     def get_overlay_audio(self,name):
+        if re.fullmatch(r'audio/[A-Za-z0-9._-]+/[1-9][0-9]*/[A-Za-z0-9._-]+\.mp3',name):
+            cache=(self.data_dir/'study-audio').resolve();target=(cache/name).resolve()
+            if not target.is_relative_to(cache) or not target.is_file():return None
+            return target.read_bytes()
         if not self.content_path.is_file():return None
         with zipfile.ZipFile(self.content_path,'r') as z:
             if name not in z.namelist():return None
@@ -188,7 +208,7 @@ class Handler(BaseHTTPRequestHandler):
                 except (OSError,ValueError,zipfile.BadZipFile,json.JSONDecodeError):return self.reply(503,{'error':'云端知识包无法读取或未校验'})
             return self.reply(404,{'error':'Not found'})
         name=unquote(path).lstrip('/') or 'index.html'
-        if name not in ['index.html','audio-index.json'] and not re.fullmatch(r'audio/[A-Za-z0-9._-]+\.mp3',name):
+        if name not in ['index.html','audio-index.json'] and not re.fullmatch(r'audio/(?:[A-Za-z0-9._-]+/[1-9][0-9]*/)?[A-Za-z0-9._-]+\.mp3',name):
             return self.reply(404,{'error':'Not found'})
         if name.startswith('audio/'):
             try:overlay=self.server.get_overlay_audio(name)

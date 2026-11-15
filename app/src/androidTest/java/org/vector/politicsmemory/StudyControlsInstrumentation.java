@@ -31,7 +31,7 @@ public final class StudyControlsInstrumentation extends Instrumentation {
         try{
             Context context=getTargetContext();store=new StudyStore(context);store.installStarterOnce();
             check(store.allCards().size()==561,"561 cards retained after installation upgrade");StudyCard first=store.allCards().get(0);
-            check(first.reviewCount==1&&"yes".equals(first.lastRating),"Original v0.11 rating survived install -r");
+            check(first.reviewCount==1&&"yes".equals(first.lastRating),"Original v0.11 database rating retained");
             int eventsBefore=store.backup().getJSONArray("events").length();StudyResources resources=new StudyResources(context,store);
             check("苏一".equals(resources.sourceName(first.packId,"")),"source name");
             for(StudyCard card:store.allCards()){
@@ -61,7 +61,7 @@ public final class StudyControlsInstrumentation extends Instrumentation {
             ContentUpdate.apply(context,bundle(patch,pack,audio,path),store);check(store.allCards().size()==561,"only other pack retired");
             boolean kept=false;JSONArray reviews=store.backup().getJSONArray("reviews");for(int n=0;n<reviews.length();n++)kept|="fixture.other.first".equals(reviews.getJSONObject(n).getString("card_id"));check(kept,"retired source retains history");
             store.saveSetting("speech_voice","default");store.saveSetting(StudyResources.SETTING,"{}");
-            output.putString("stream","PASS: upgrade keeps ratings; 561 exact full/cloze renderings; independent source add/retire; global optional voice import and MediaPlayer decode; corrupt audio rejected; no false question mistake from rating.\n");finish(Activity.RESULT_OK,output);
+            output.putString("stream","PASS: legacy database keeps ratings; 561 exact full/cloze renderings; independent source add/retire; global optional voice import and MediaPlayer decode; corrupt audio rejected; no false question mistake from rating.\n");finish(Activity.RESULT_OK,output);
         }catch(Throwable e){output.putString("stream","FAIL: "+android.util.Log.getStackTraceString(e));finish(Activity.RESULT_CANCELED,output);}
         finally{if(store!=null)store.close();}
     }

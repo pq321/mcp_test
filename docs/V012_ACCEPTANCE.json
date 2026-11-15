@@ -1,0 +1,56 @@
+{
+  "version": "0.12.0",
+  "status": "FUNCTIONAL_PASS_UPGRADE_BLOCKED",
+  "run_id": "43683339118",
+  "scope": [
+    "source header",
+    "global voice selector",
+    "hidden/full/cloze cycle",
+    "exact-source emphasis and cloze"
+  ],
+  "browser": {
+    "mode": "real HTTP receiver + browser",
+    "all_561_annotations_exact_and_nonoverlapping": "PASS",
+    "data_driven_suyi_parent_five_existing_subjects": "PASS",
+    "hidden_full_cloze_hidden_and_original_fonts": "PASS",
+    "finger_left_next_right_previous_loop_no_toggle": "PASS",
+    "question_mistake_history_distinct_from_forgotten": "PASS",
+    "global_voice_folded_below_4x_no_automatic_network": "PASS",
+    "optional_voice_publish_import_global_choice_and_separate_source_retirement": "PASS",
+    "reload_hidden_keeps_voice_progress_and_source_retirement": "PASS"
+  },
+  "android": {
+    "three_modes_cold_hidden": "PASS",
+    "unchanged_finger_direction_and_no_toggle": "PASS",
+    "global_voice_folded_after_4x": "PASS",
+    "real_media_decode_4x_voice_switch_keeps_pause_and_card": "PASS",
+    "real_auto_next_follows_review_without_scoring": "PASS",
+    "player_survives_tab_change": "PASS",
+    "device": "Android 29 emulator 1080x2340 / 440dpi; not physical OPPO K5"
+  },
+  "upgrade": {
+    "released_v011_in_place_upgrade": "BLOCKED_SIGNATURE_MISMATCH",
+    "disposable_emulator_database_restore": "PASS",
+    "error": "Performing Streamed Install\nadb: failed to install app/build/outputs/apk/debug/app-debug.apk: Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Package org.vector.politicsmemory signatures do not match previously installed version; ignoring!]",
+    "scope": "Only synthetic records on a disposable emulator; NOT a user-phone migration.",
+    "restored_files_sha256": {
+      "databases/politics-memory.db": "cdfeab9045c5900127b0328f0cb0476016cc821b2b8b6357f4c350a51afbc940",
+      "databases/politics-memory.db-wal": "70d91f823a77827ddb57b4253e58d42dc78030ee37243de6e6fe8dd5e0175be0",
+      "databases/politics-memory.db-shm": "fd6f97c71ebf99bf7c82fdce66f54ccbfd2fe43d919eb21e5c592af08a0ad94a"
+    }
+  },
+  "native_acceptance": "PASS: legacy database keeps ratings; 561 exact full/cloze renderings; independent source add/retire; global optional voice import and MediaPlayer decode; corrupt audio rejected; no false question mistake from rating.\n\n",
+  "unchanged_original_card_count": 561,
+  "new_production_voices": 0,
+  "limits": [
+    "Released v0.11 cannot be updated in place because its signing file was not preserved. Do not uninstall a user phone without a separately verified migration.",
+    "Physical OPPO K5 not tested",
+    "Real Google Drive provider upload not tested",
+    "ASR context is not word-for-word teacher emphasis verification"
+  ],
+  "sha256": {
+    "data/suyi-full.json": "20b2236109e35b69244b7826da3e239a67b4f735e54f84977b5a6af0fa73d9e4",
+    "data/study-resources.json": "03419f4a66d151a7cafb5800ab8fa953833b340176a4231d3a8dcd077dbe4592",
+    "app/build/outputs/apk/debug/app-debug.apk": "c3385cda00f5c17634668790b7f89677d9b80b0e04699541d827261a45340a56"
+  }
+}

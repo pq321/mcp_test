@@ -12,6 +12,7 @@ android {
         versionName '0.12.0'
         testInstrumentationRunner 'org.vector.politicsmemory.StudyControlsInstrumentation'
     }
+    signingConfigs { debug { storeFile file(System.getProperty('user.home') + '/.android/debug.keystore') } }
     buildTypes {
         release { minifyEnabled false }
         debug { minifyEnabled false }

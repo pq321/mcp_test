@@ -1,52 +1,57 @@
-# PoliticsMemory v0.11 | 手动 Google Drive 同步与 Codex 知识包发布
+# PoliticsMemory v0.12 · 仅四项增量
 
-## 不变的原则
+基线：`f9b0d727abb2b59aabe4cf4e4ce6e7260f2d0cc7`。不修改现有561组正文/问题/ID、561条原录音、评分算法、滑动方向、字号、连续播放及手动同步原则。
 
-- 手机学习、评分、音频、错题全部支持离线。
-- **只有主动点击「同步」才读取或写入云端文件**；不设后台工作、定时同步、打开时自动同步。
-- 只显示原来的一个「同步」入口。长按这个入口可以重新关联文件。
-- 不改变之前 v0.10.1 的手指滑动方向、三档评分、字体或极简排版。
-- 程序更新仍通过 GitHub Releases；**知识数据更新不用安装 APK**。
+> 安装限制：已发布v0.11的签名文件未成功缓存。新版APK不能直接覆盖该旧包；不要为安装新版而卸载已有APP。此版先作为预发布，旧版和个人进度不动。模拟器数据库恢复验证不代表用户手机已完成迁移。
 
-## 零成本实现与首次连接
+## 使用
 
-不需要 Google Cloud OAuth Client ID、API Key 或服务器。Android 使用 Android 官方 **Storage Access Framework (SAF)**；仅当 Google Drive 的 Android 文件提供器在系统选择器里可见且提供文件读写功能时，才能实现下面的远程同步。请先在手机安装并登录 Google Drive，使用与你的 Drive 同步目录相同的账号。
+- 资料页增加可折叠的“苏一”，下面仍是原五科、章节、考点和知识组。其他来源只有实际发布资料后才出现，无空占位。来源名称来自数据索引。
+- 点击播放器倍速：0.75×—4×之后为折叠的“声音”。展开后是全局单选，选择会保存在本机，所有后续播放使用同一声音。不提供逐组音色设置或手机制作录音功能。
+- 冷启动默认隐藏答案。点击正文依次为“回忆 → 完整展示 → 挖空 → 回忆”。原揭晓按钮同样循环，滑动/评分/播放控件不触发显示切换。不同页面和翻卡延续当前显示状态；重开重新隐藏。
+- 浅黄底+加粗：核心；红色加粗：易混区别；蓝色：条件/否定/逻辑限定；标题底部虚线：有做题错题标记历史。忘记/模糊评分不是做题错题。
+- 切换声音时从当前组录音起点重播，保持暂停/播放状态、倍速和队列。某音色未覆盖当前组时，明确提示并使用正文匹配的默认声音；绝不把旧文字录音当新版答案播放。
 
-Google Drive 已预置私有文件夹 `PoliticsMemory_手动同步与资料更新`。其中有 `progress.json` 和 `content-update.zip`。文件夹和两份文件的实际 Drive ID 不应硬编码进公开 GitHub 仓库；Codex 应通过已连接的 Google Drive 检索它们，**读取当前文件 ID 后原位更新**，不能删除重建。
-首次在手机点击「同步」，依次通过系统文件选择器从上述 Google Drive 文件夹选择 `progress.json`（需读写权限）和 `content-update.zip`（读取权限）。APP 保存的是用户授予的两个文件权限，不保存 Google 密码、OAuth Token 或云端管理员权限。以后只点一次「同步」，才会把本机与所选进度文件进行合并，再按需导入知识更新。
+本次没有制作新的生产音色：菜单起初只有原默认声音。测试使用的fixture音色不进入发布APK。Codex发布其他声音后，手机主动同步后才显示。
 
-如果 Android 的系统文件选择器没有出现 Google Drive，说明当前手机/Google Drive 版本未提供所需文件访问途径；**不能将本地选中的文件冒充云端同步成功**。这时可保留旧版局域网接收器，或在手机提供 Google Drive 文件提供器之后重新关联。尚未在实体 OPPO K5 完成云盘文件提供器兼容性测试。
+## 挖空与标注来源
 
-Google Drive 的文件提供器可能在后台上传写入的文件。APP 验证的是本机所选文档可回读，**不等于已收到 Google 云端的服务器回执**。界面据此只提示“文件已更新，云盘上传由 Google Drive 完成”。断网或云盘尚未上传完成时，以 Drive 自己的同步状态为准。
+561组使用独立`data/study-resources.json`旁注，不改`data/suyi-full.json`。锚点是原文精确片段，附正文SHA-256和UTF-16位置。修改目录/声音/旁注不增加知识正文revision，不将掌握状态变成待复核。正文变更时旧标记校验失效，不错位挖空。
 
-## 电脑同步
+本批为初版编辑选取的概念、对应关系、成套要点、易混区别词，结合用户Library课程逐课文字稿的相关上下文；有关旁注记录课程ID和时间段。相关课程上下文不等于老师明确划重点，也不等于全量逐字人工终审。课程原稿标识为RAW_ASR_UNVERIFIED，保留此边界。未把课程全文或用户学习记录上传公共仓库。苏一原先前75页尚未逐字终审的状态不因本次变动而升级。
 
-推荐安装 Google Drive for desktop（免费额度内），在电脑端镜像/挂载同一文件夹。首次运行网页包里的 `start-sync.cmd`，选择这个电脑上的 Google Drive 同步文件夹。接收器的 API 凭据只在本机 `local-data/` 中，**不会放进 Google Drive**；网页点击「同步」时，接收器才读写 Drive 同步文件夹中的 `progress.json`，同时检查 `content-update.zip`。两台设备可不在同一 Wi-Fi，云端文件由 Google Drive 客户端各自上传/下载。
+另外按原文精修20组旁注，保存在`data/study-anchor-revisions-v012.json`：补全成套原则、概念对应和易混关系，去掉“1.原因：”等没有回忆价值的标题挖空，并拆除连带下一概念的过长空。它们是编辑判断，不冒充教师原话；只有原位置和原片段均相同才继承课程上下文标记。最终片段数和相关上下文数由验证脚本实际统计。
 
-如果还未安装 Google Drive for desktop，原局域网版本可继续使用，但无法声称已经具备异地 Drive 同步。
+## Codex 发布入口
 
-## Codex 增删改背诵知识点
+`python scripts/publish_study_resources.py --help`
 
-Canonical source：`data/suyi-full.json`。
+1. 保留原资料的稳定card ID。新资料包使用自己的稳定pack_id和全局唯一card ID。来源名称在`study-resources.json.sources`设置。
+2. 发布资料时使用`--pack <完整资料包.json>`；一个包是该来源的完整有效集合。更高pack_revision中未列出的卡仅停用，原评分/事件保留。空的新版本停用该来源，不影响其他来源。不要把局部几条卡冒充完整资料包。
+3. 声音是独立资源，选项名称、版本和录音索引在`voices`中；单独改声音不修改知识正文。现有默认音频仍内置，新增声音文件放入`audio/<voice_id>/<revision>/<card_id>.mp3`。不可复用同一版本路径覆盖不同字节。
+4. 用`--voice-id`、`--voice-name`、`--voice-revision`、`--voice-dir`接入Codex已制作的MP3；用`--text-pack`提供对应正文（仅用于绑定，不更新手机知识正文）。索引只校验文件完整性/文本版本，不能替代人工试听确认实际朗读内容。
+5. 旁注/来源/声音分别维护revision；更改相应条目必须递增。提供`--previous-resources`校验版本变化，`--save-resources`保存本次完整资源索引用于下次发布。
+6. 输出仍命名为`content-update.zip`，通过已授权Google Drive连接原位更新既有文件。不得删除重建文件ID，也不要更改`progress.json`。手机仍用原“同步”按钮，无后台同步。
 
-1. Codex 更改该 JSON 的 `cards`，新增知识组分配全局唯一且稳定的 `id`；修改一组要增加该组的 `revision`；删除时从新版全文包中移除该组，但不要复用它的 ID。`pack_revision` 必须递增。
-2. 使用 `scripts/publish_content_update.py` 比较旧版与新版（`--before`、`--after`），提供新增/改写“标题+正文”的新录音 `--audio-dir`，输出 `content-update.zip`。只包含**新增或更改的MP3**，不重复打包原有561条。
-3. 校验完成后通过已连接的 Google Drive 连接器 **原位替换** 上述 `content-update.zip`（同一个文件 ID，不要删除重建）。可以通过 Google Drive update_file 或原位覆盖的文件工具更新。
-4. 手机下一次主动点击「同步」，APP 对知识包的结构、音频内容哈希和文件哈希先做校验；新版 `pack_revision` 更高才使**整包所列知识组**成为有效集合。新增入列、修改保留历史并标记待复核、删除仅从复习队列隐藏并保留事件历史。旧内置素材包不会覆盖更高版本。
-5. 电脑网页版点击「同步」时同样可以更新本地浏览器的知识组；修改后的音频可由桌面接收器从同步包中按需读取。
+示例（路径均为Codex本地文件，不是手机设置）：
 
-### 小心：不要把整个学习进度上传到公共 GitHub
+```bash
+python scripts/publish_study_resources.py \
+  --resources data/study-resources.json \
+  --previous-resources private-cache/last-published-resources.json \
+  --text-pack data/suyi-full.json \
+  --voice-id clear_female --voice-name 清晰女声 --voice-revision 1 \
+  --voice-dir private-cache/new-voice-mp3 \
+  --audio-root private-cache --save-resources private-cache/current-resources.json \
+  --out private-cache/content-update.zip
+```
 
-Drive `progress.json` 和云端连接信息都属于个人隐私数据，保持 Drive 私有权限。只有原有项目代码、审核后的知识包发行说明可以进入 GitHub。源仓库当前可见性可能是 public，请先确认苏一资料的授权情况；不要将个人学习记录或 Google 账号凭据提交。
+新文件须包含`update.json`、`study-resources.json`，以及可选的`packs/<pack_id>.json`与声音MP3。发布器保留当前所有可选音色的完整文件集合，确保手机跳过某次发布仍能同步。原内置561条不重复打包；接收端不重写已校验且未变化的文件。使用单个Drive ZIP意味着它不是按字节网络增量下载。
 
-## 数据安全边界
+声音优先级：所选声音的当前文字匹配录音 → 默认声音当前文字匹配录音 → 明确不可播放。不制作假音色占位。删除声音用更高revision与retired=true；默认声音不可退役。
 
-- 更新新资料时，稳定 card ID 与评分事件 ID 永不重复利用。删除知识点只软停用；原评分历史不删除。
-- 改动答案会标记待复核。新增知识点初始为未学。
-- 云端进度用事件唯一 ID 合并，按时间选择较新每组评分，保留错题标记/取消标记的最近操作。
-- 手机在覆盖远端文件前另存上一次读取的状态，本次写入后校验回读。发生错误不把同步描述为成功。
-- **跨设备恰好同时写入 Drive 文档**仍可能导致冲突副本；这是普通云盘同步文件的限制，不是强一致事务数据库。个人使用建议两端分时点击同步。需要严格事务的多端并发需另做服务器或使用 Drive API 条件写入。
+## 验收和范围边界
 
-## 非应用更新范围
+针对实际使用路径验证：目录折叠、三态点击、音色菜单、原手势/循环、评分与复习历史、资料包独立增删、真实MP3解析、暂停/倍速/自动下一条。旧版数据库兼容性单独验证；已发布旧包的覆盖安装因签名不一致而受阻。不新建广泛测试框架，不改其他版本工作流。最终结果以`V012_ACCEPTANCE.json`及对应运行日志为准。
 
-这轮不增加用户中心、云账号登录界面、不改变复习交互、不增加后台定时任务。同步功能的真实 Drive provider 行为需要在 OPPO K5 上首次选择文件后验证；模拟器只能验证 SAF 文件读写逻辑，不能代替实际 Google Drive 上传完成。
+Android模拟器和本地Drive镜像不能代替实体OPPO K5和Google Drive提供器的真实服务器回写验证。新资源内置到新版APK；本轮不触碰个人Drive进度。
