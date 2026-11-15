@@ -627,7 +627,7 @@ public final class MainActivity extends Activity {
             if(!addFormattedAnswer(body,card,studyMode==2)){
                 TextView answer=text("",14,DARK,false);answer.setText(studyResources.answer(card,false));answer.setContentDescription("完整原文");answer.setLineSpacing(dp(3),1.10f);answer.setOnClickListener(v->toggleAnswer());body.addView(answer);
             }
-            if(card.notes!=null&&!card.notes.trim().isEmpty()){
+            if(studyMode==1&&card.notes!=null&&!card.notes.trim().isEmpty()){
                 spacer(body,13);TextView note=text(card.notes,9,0xffb54444,false);
                 padding(note,18,0,0,0);body.addView(note);
             }
