@@ -1,3 +1,4 @@
-PoliticsMemory v0.10.1 desktop preview
-Open index.html in a modern browser. Keep the audio/ folder beside it for offline speech.
-One-time pairing: launch the included desktop sync receiver; paste the connection code on the phone. Then tap Sync to send progress directly to this computer. Both devices must reach the receiver (normally the same trusted Wi-Fi).
+PoliticsMemory v0.11 desktop preview
+Open index.html for offline study, or start-sync.cmd to use the local sync receiver. Keep audio/ beside index.html.
+For Drive sync, select the Google Drive desktop folder that contains progress.json and content-update.zip. Only clicking Sync reads or writes these files.
+On Android v0.11, select these same two files using the phone system file picker; a desktop connection code is not needed. Google Drive handles cloud uploads separately. See README.md for setup.

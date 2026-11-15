@@ -64,9 +64,10 @@ def main():
     (out / 'index.html').write_text(html, encoding='utf-8')
     (out / 'audio-index.json').write_text(json.dumps(index, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     (out / 'README.txt').write_text(
-        'PoliticsMemory v0.10.1 desktop preview\n'
-        'Open index.html in a modern browser. Keep the audio/ folder beside it for offline speech.\n'
-        'One-time pairing: launch the included desktop sync receiver; paste the connection code on the phone. Then tap Sync to send progress directly to this computer. Both devices must reach the receiver (normally the same trusted Wi-Fi).\n',
+        'PoliticsMemory v0.11 desktop preview\n'
+        'Open index.html for offline study, or start-sync.cmd to use the local sync receiver. Keep audio/ beside index.html.\n'
+        'For Drive sync, select the Google Drive desktop folder that contains progress.json and content-update.zip. Only clicking Sync reads or writes these files.\n'
+        'On Android v0.11, select these same two files using the phone system file picker; a desktop connection code is not needed. Google Drive handles cloud uploads separately. See README.md for setup.\n',
         encoding='utf-8')
     for name in ['progress_server.py','start-sync.cmd','start-sync.sh']:
         shutil.copy2(root/'desktop'/name,out/name)
@@ -75,3 +76,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

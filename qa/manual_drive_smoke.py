@@ -3,14 +3,14 @@
 import hashlib,io,json,os,subprocess,sys,tempfile,threading,time,zipfile
 from pathlib import Path
 from urllib import request
+from urllib.parse import urlencode, urlsplit
 
 HERE=Path(__file__).resolve().parent.parent
 sys.path.insert(0,str(HERE/'desktop'))
 from progress_server import Receiver,encode,empty
 from playwright.sync_api import sync_playwright
 
-PACK_FILE=Path('/mnt/data/politics_full/repo/data/suyi-full.json')
-if not PACK_FILE.is_file():PACK_FILE=HERE/'data/suyi-full.json'
+PACK_FILE=HERE/'data/suyi-full.json'
 
 def post(url, token, payload):
     content=json.dumps(payload,ensure_ascii=False).encode('utf-8')
@@ -54,24 +54,46 @@ def run():
             with sync_playwright() as pw:
                 browser=pw.chromium.launch(headless=True,args=['--no-sandbox'],**({'executable_path':'/usr/bin/chromium'} if Path('/usr/bin/chromium').is_file() else {}))
                 context=browser.new_context(viewport={'width':390,'height':844})
-                page=context.new_page();network=[];page.on('request',lambda req:network.append(req.url) if '/api/' in req.url else None)
-                page.evaluate("Object.defineProperty(window,'localStorage',{configurable:true,value:{data:{},getItem(k){return this.data[k]||null},setItem(k,v){this.data[k]=v},removeItem(k){delete this.data[k]}}})")
-                page.set_content(html,wait_until='load');page.wait_for_timeout(800)
+                page=context.new_page();network=[]
+                page.on('request',lambda req:network.append((req.method,urlsplit(req.url).path)) if '/api/' in req.url else None)
+                page.goto(base+'/#'+urlencode({'sync':base+'#'+server.token}),wait_until='load');page.wait_for_timeout(800)
                 assert not network, 'Opening web UI unexpectedly triggered sync'
                 assert page.evaluate('PoliticsMemory.getCards().length')==561
-                # A single user-initiated sync receives new pack; deletion hides card, preserves reviews.
-                page.route('**/api/content',lambda route:route.fulfill(status=200,content_type='application/json',body=json.dumps(server.content_manifest(),ensure_ascii=False)))
-                config={'base':base,'token':server.token}
-                delta=page.evaluate('(config)=>PoliticsMemory.fetchContentOnManualSync(config)',config)
-                assert delta['removed']==1 and delta['added']==0,delta
+                # Use the visible rating and sync controls against the real HTTP receiver.
+                page.get_by_role('button',name='复习',exact=True).click()
+                page.get_by_role('button',name='揭晓',exact=True).click()
+                page.get_by_role('button',name='记住',exact=True).click()
+                page.wait_for_timeout(500)
+                assert not network, 'Rating unexpectedly triggered sync'
+                def click_sync():
+                    page.get_by_role('button',name='同步数据',exact=True).click()
+                    page.wait_for_function("/^(同步完成|尚未同步)/.test(document.getElementById('toast').textContent)")
+                    message=page.locator('#toast').inner_text()
+                    assert message.startswith('同步完成'),message
+                click_sync()
+                assert network==[('POST','/api/progress'),('GET','/api/progress'),('GET','/api/content')],network
                 assert page.evaluate('PoliticsMemory.getCards().length')==560
-                assert page.evaluate('(id)=>!!PoliticsMemory.getState().reviews[id]',pack['cards'][-1]['id'])==False
+                assert page.evaluate('(id)=>!!PoliticsMemory.getState().reviews[id]',pack['cards'][-1]['id']), 'Retirement discarded rating history'
+                saved=json.loads((drive/'progress.json').read_text())
+                event_ids=sorted(e['id'] for e in saved['events'])
+                assert len(event_ids)==len(set(event_ids))==2,event_ids
+                assert len(saved['reviews'])==2,saved['reviews']
+                revision=saved['revision'];network.clear()
+                click_sync()
+                repeated=json.loads((drive/'progress.json').read_text())
+                assert repeated['revision']==revision+1
+                assert sorted(e['id'] for e in repeated['events'])==event_ids, 'Repeat sync duplicated events'
+                assert repeated['reviews']==saved['reviews'], 'Repeat sync changed ratings'
+                assert network==[('POST','/api/progress'),('GET','/api/progress'),('GET','/api/content')],network
                 assert page.evaluate('localStorage.getItem("politics_suyi_grouped_v07")')
-                page.set_content(html,wait_until='load')
+                network.clear();page.reload(wait_until='load');page.wait_for_timeout(300)
+                assert not network, 'Reload unexpectedly triggered sync'
                 assert page.evaluate('PoliticsMemory.getCards().length')==560,'Retirement lost on reload'
+                assert page.evaluate('(id)=>!!PoliticsMemory.getState().reviews[id]',pack['cards'][-1]['id']), 'Reload discarded retired history'
                 context.close();browser.close()
-            print('PASS: manual-only browser, LAN receiver reads Drive folder, progress write, no credential leak, Codex authoritative pack retirement')
+            print('PASS: real Sync button POST/receipt/GET/content flow; repeat sync keeps exactly 2 rating events; retirement and history persist; no automatic sync')
         finally:
             server.shutdown();server.server_close();th.join(timeout=2)
 
 if __name__=='__main__':run()
+

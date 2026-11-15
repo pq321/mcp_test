@@ -4,18 +4,50 @@ on:
     workflows: ["PoliticsMemory v0.11 manual Drive and content update"]
     types: [completed]
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - desktop/progress_server.py
+      - preview/app.js
+      - qa/manual_drive_smoke.py
+      - scripts/build_preview.py
+      - .github/workflows/v011-windows.yml
 permissions:
   contents: write
   actions: read
+concurrency:
+  group: politics-v011-windows
+  cancel-in-progress: true
 jobs:
+  manual_sync:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Record checked source
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify the actual manual Sync button flow
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+          python qa/manual_drive_smoke.py
   windows:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    needs: manual_sync
     runs-on: windows-latest
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ needs.manual_sync.outputs.source_sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -55,13 +87,13 @@ jobs:
           path: dist/PoliticsMemory-Sync.exe
           retention-days: 14
   publish:
-    needs: windows
+    needs: [manual_sync, windows]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ needs.manual_sync.outputs.source_sha }}
       - uses: actions/download-artifact@v4
         with:
           name: v011-windows-receiver
@@ -73,9 +105,30 @@ jobs:
           set -euo pipefail
           test -s windows/PoliticsMemory-Sync.exe
           test -f web-preview/index.html
-          cp windows/PoliticsMemory-Sync.exe web-preview/PoliticsMemory-Sync.exe
-          (cd web-preview && zip -q -r ../PoliticsMemory-v0.11.0-web.zip .)
-          sha256sum windows/PoliticsMemory-Sync.exe PoliticsMemory-v0.11.0-web.zip
-          gh release view v0.11.0-manual-drive > /dev/null
-          gh release upload v0.11.0-manual-drive windows/PoliticsMemory-Sync.exe PoliticsMemory-v0.11.0-web.zip --clobber
-          echo 'PASS: Windows receiver and updated complete web archive on v0.11.0 release'
+          python scripts/build_preview.py --pack data/suyi-full.json --audio-index web-preview/audio-index.json --audio-dir web-preview/audio --out desktop-site
+          cp docs/DRIVE_MANUAL_V011.md desktop-site/README.md
+          cp windows/PoliticsMemory-Sync.exe desktop-site/PoliticsMemory-Sync.exe
+          mkdir -p deliverables
+          cp windows/PoliticsMemory-Sync.exe deliverables/
+          (cd desktop-site && zip -q -r ../deliverables/PoliticsMemory-v0.11.0-web.zip .)
+          gh release download v0.11.0-manual-drive --pattern PoliticsMemory-v0.11.0.apk --dir deliverables
+          (cd deliverables && sha256sum PoliticsMemory-v0.11.0.apk PoliticsMemory-Sync.exe PoliticsMemory-v0.11.0-web.zip > SHA256SUMS.txt)
+          cp docs/V011_SYNC_RECEIPT_FIX.json deliverables/
+          python - <<'PY'
+          import json,os,subprocess
+          from pathlib import Path
+          p=Path('deliverables/V011_SYNC_RECEIPT_FIX.json')
+          report=json.loads(p.read_text())
+          report['published_source_commit']=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          report['delivery_run_id']=os.environ['GITHUB_RUN_ID']
+          report['browser_manual_sync_ci']='PASS'
+          report['windows_executable_health']='PASS'
+          p.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+          notes=Path('docs/DRIVE_MANUAL_V011.md').read_text()
+          notes+='\n## 2026-11-15 同步回执修复\n\n电脑同步回执已修复，真实同步按钮的上传、合并、资料更新与重复同步回归已通过。Android APK 不变；请下载本页更新后的网页 ZIP 或同步接收器。三份安装/运行资产的校验值已统一重算。\n\n修复源码：'+report['published_source_commit']+'。Google Drive 手机端实际上传仍待用户首次关联后验证。\n'
+          Path('release-notes.md').write_text(notes,encoding='utf-8')
+          PY
+          gh release upload v0.11.0-manual-drive deliverables/PoliticsMemory-Sync.exe deliverables/PoliticsMemory-v0.11.0-web.zip deliverables/SHA256SUMS.txt deliverables/V011_SYNC_RECEIPT_FIX.json --clobber
+          gh release edit v0.11.0-manual-drive --notes-file release-notes.md
+          echo 'PASS: verified desktop sync correction published; existing Android APK retained'
+

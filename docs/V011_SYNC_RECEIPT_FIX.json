@@ -1,0 +1,17 @@
+{
+  "version": "0.11.0",
+  "fix": "manual-sync-upload-receipt",
+  "original_release_commit": "dc156a83f632ada82ca5cb1d61acb36795f9f1a9",
+  "problem": "The receiver acknowledged the merged file hash while the browser checked the exact uploaded request hash, stopping progress/content retrieval.",
+  "changes": [
+    "Acknowledge the original request bytes; retain merged-file persistence and readback verification.",
+    "Run the real visible Sync control through upload, receipt verification, merged progress retrieval and content update.",
+    "Confirm repeated sync preserves event IDs and ratings; opening, rating and reload do not auto-sync.",
+    "Replace obsolete desktop pairing copy and rebuild packaged preview; recalculate all published asset checksums."
+  ],
+  "browser_manual_sync_ci": "PENDING",
+  "windows_executable_health": "PENDING",
+  "android": "Existing v0.11.0 APK retained; no Android source changes.",
+  "real_google_drive_phone_sync": "NOT_VERIFIED: initial device document selection and provider upload still required.",
+  "personal_drive_files": "Not modified; no private file identifiers or study records included."
+}

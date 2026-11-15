@@ -166,16 +166,16 @@ async function uploadToComputer(config=syncConfig){
   if(config!==syncConfig)saveConnection(config);
   const latest=await syncRequest(config,'/api/progress');lastSyncedRevision=applyProgress(latest);
   const delta=await fetchContentOnManualSync(config);
-  if($('dialog').open)$('dialog').close();toast('同步完成 · '+ack.review_count+'条记录 · 资料新增'+delta.added+' 更新'+delta.updated+' 停用'+delta.removed);
- }catch(e){toast('尚未同步：'+(e.name==='AbortError'?'电脑未响应':e.message)+'。请打开电脑接收器并检查同一Wi-Fi；长按同步可重新连接。')}
+  if($('dialog').open)$('dialog').close();toast('同步完成 · '+ack.review_count+'条记录 · 资料新增'+delta.added+' 更新'+delta.updated+' 停用'+delta.removed+'；云盘上传由 Google Drive 完成');
+ }catch(e){toast('尚未同步：'+(e.name==='AbortError'?'电脑未响应':e.message)+'。请确认电脑接收器已开启、所选同步文件夹可读取；长按同步可重新连接。')}
  finally{syncBusy=false}
 }
 function connectComputer(){
  if(pairCode){
-  modal('连接手机','<p class="small">电脑接收器已开启。手机与电脑连接同一可信Wi-Fi，首次在手机点击同步并粘贴下方连接码；之后一键上传，电脑页面自动更新。</p><input id="pairCode" aria-label="电脑连接码" readonly><button class="menu-item" id="copyCode">复制连接码</button>');
-  $('pairCode').value=pairCode;$('copyCode').onclick=async()=>{try{await navigator.clipboard.writeText(pairCode)}catch(e){$('pairCode').select();document.execCommand('copy')}toast('连接码已复制，请只发给自己的手机')};
+  modal('电脑同步已连接','<p class="small">电脑接收器已开启。请在接收器中选择 Google Drive 同步文件夹；手机在 APP 中关联同一文件夹的 progress.json 和 content-update.zip。两端各自点击同步，不要求同一 Wi-Fi。下方连接码只用于重新连接电脑接收器。</p><input id="pairCode" aria-label="电脑连接码" readonly><button class="menu-item" id="copyCode">复制电脑连接码</button>');
+  $('pairCode').value=pairCode;$('copyCode').onclick=async()=>{try{await navigator.clipboard.writeText(pairCode)}catch(e){$('pairCode').select();document.execCommand('copy')}toast('电脑连接码已复制')};
  }else{
-  modal('连接电脑','<p class="small">先在电脑打开同步接收器。两台设备连接同一可信Wi-Fi；首次粘贴连接码，之后点击同步即可上传，不再导出文件。</p><input id="connection" aria-label="电脑连接码" placeholder="粘贴电脑连接码" autocomplete="off" spellcheck="false"><button class="menu-item" id="connect">连接并同步</button>');
+  modal('连接电脑','<p class="small">先在电脑运行 start-sync.cmd，并选择 Google Drive 同步文件夹。首次粘贴电脑接收器显示的连接码，以后只在点击同步时更新进度和资料。手机端请通过 Google Drive 选择对应文件。</p><input id="connection" aria-label="电脑连接码" placeholder="粘贴电脑连接码" autocomplete="off" spellcheck="false"><button class="menu-item" id="connect">连接并同步</button>');
   $('connection').value=syncConfig?syncConfig.base+'#'+syncConfig.token:'';
   $('connect').onclick=()=>{try{uploadToComputer(connectionFrom($('connection').value))}catch(e){toast(e.message)}};
  }
@@ -190,7 +190,7 @@ function bootSync(){
 }
 
 function sourceDetail(){const c=current();modal('本组来源',`<p>${esc(c.source||'导入资料')}</p><p class="small">${c.content_status==='VISUALLY_REORGANIZED'?'本组按苏一原图逐页阅读后重组。':'本组按既有结构化底稿和原有知识分支重组，未宣称逐字终审。'}</p>${c.source_notes?.length?'<h3>原图旁注留存（未逐字终审）</h3><p class="small warning">旁注用于对照来源，不作为已核实的老师技巧；未能准确定位的旁注按原页保留。</p>'+c.source_notes.map(n=>`<p class="source-note">${esc(n.text)}</p>`).join(''):''}<p class="small">编号：${esc(c.id)}</p>`)}
-function about(){const audioCount=Object.keys(AUDIO_INDEX.items||{}).length;modal('苏一全科 v0.10',`<p>五科共 ${cards.length} 组，依据苏一正文印刷1—135页（PDF6—140页）整理。封面、目录、封底不作为背诵卡。</p><p>印刷76—135页按原图重新整理；印刷1—75页按既有结构化底稿分组，所有已标注结构节点均已纳入分组。全科覆盖不等于全书逐字终审。</p><p>当前离线录音索引：${audioCount}/${cards.length} 组。播放前会校验正文SHA-256；倍速支持0.75×—4×。</p><p>学习时离线保存；首次配对电脑后，点击同步上传进度，电脑页面自动更新。未连接电脑时不会声称同步成功。</p><p class="small">原有短卡浏览器记录没有被清除；完整备份保留可读取的旧版记录。时政资料等待用户提供。</p>`)}
+function about(){const audioCount=Object.keys(AUDIO_INDEX.items||{}).length;modal('苏一全科 v0.11',`<p>五科共 ${cards.length} 组，依据苏一正文印刷1—135页（PDF6—140页）整理。封面、目录、封底不作为背诵卡。</p><p>印刷76—135页按原图重新整理；印刷1—75页按既有结构化底稿分组，所有已标注结构节点均已纳入分组。全科覆盖不等于全书逐字终审。</p><p>当前离线录音索引：${audioCount}/${cards.length} 组。播放前会校验正文SHA-256；倍速支持0.75×—4×。</p><p>学习时离线保存；电脑接收器关联 Drive 同步文件夹后，只在点击同步时更新进度和资料。手机需关联同一文件夹的两份文件；云盘上传由 Google Drive 完成。</p><p class="small">原有短卡浏览器记录没有被清除；完整备份保留可读取的旧版记录。时政资料等待用户提供。</p>`)}
 function setSpeed(n){if(!SPEEDS.includes(n))return;app.speed=n;audio.playbackRate=n;audio.defaultPlaybackRate=n;persist();updatePlayer()}
 async function sha256Hex(value){const bytes=new TextEncoder().encode(value);if(!window.crypto?.subtle)return sha256Fallback(bytes);const digest=await crypto.subtle.digest('SHA-256',bytes);return [...new Uint8Array(digest)].map(x=>x.toString(16).padStart(2,'0')).join('')}
 // SHA-256 also works on a trusted LAN http origin where SubtleCrypto is unavailable.

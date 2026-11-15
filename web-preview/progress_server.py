@@ -239,6 +239,7 @@ class Handler(BaseHTTPRequestHandler):
             if not 0<size<=MAX_BODY:return self.reply(413,{'error':'Progress file too large'})
             raw=self.rfile.read(size)
             if len(raw)!=size:raise ValueError('Incomplete request')
+            received_sha256=hashlib.sha256(raw).hexdigest()
             payload=validate(json.loads(raw,parse_constant=lambda _:(_ for _ in ()).throw(ValueError('Invalid number'))))
             with self.server.lock:
                 combined=merge(self.server.reload_progress(),payload)
@@ -251,7 +252,7 @@ class Handler(BaseHTTPRequestHandler):
                 with dest.open('wb') as fp:fp.write(raw);fp.flush();os.fsync(fp.fileno())
                 if dest.read_bytes()!=raw:raise OSError('Cloud progress write verification failed')
                 self.server.progress=combined
-            return self.reply(200,{'ok':True,'request_id':payload['request_id'],'received_sha256':hashlib.sha256(raw).hexdigest(),'revision':combined['revision'],'saved_at':combined['updated_at'],'review_count':len(payload['reviews'])})
+            return self.reply(200,{'ok':True,'request_id':payload['request_id'],'received_sha256':received_sha256,'revision':combined['revision'],'saved_at':combined['updated_at'],'review_count':len(payload['reviews'])})
         except (ValueError,TypeError,KeyError) as e:return self.reply(400,{'error':str(e)})
         except OSError:return self.reply(503,{'error':'电脑无法写入进度，尚未保存，请检查磁盘或目录权限'})
 
@@ -311,3 +312,4 @@ def main():
     except KeyboardInterrupt:pass
     finally:server.server_close()
 if __name__=='__main__':main()
+
