@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - env:
+      - name: Run the exact current feature branch
+        env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run v012-study-controls.yml --repo pq321/mcp_test --ref feature/v012-study-controls
