@@ -1,4 +1,5 @@
-PoliticsMemory v0.12 desktop preview
-Open index.html for offline study, or start-sync.cmd to use the local sync receiver. Keep audio/ beside index.html.
-For Drive sync, select the Google Drive desktop folder that contains progress.json and content-update.zip. Only clicking Sync reads or writes these files.
-On Android v0.11, select these same two files using the phone system file picker; a desktop connection code is not needed. Google Drive handles cloud uploads separately. See README.md for setup.
+PoliticsMemory v0.12.1
+打开 index.html；Windows 手动同步运行 start-sync.cmd。保留 audio/。
+资料页：苏一（可折叠）→原五科。复习：回忆→完整→挖空→回忆。声音：倍速菜单4×下方展开后全局选择。
+覆盖旧网页前先备份原目录，并沿用原浏览器、原路径；不要清除浏览器数据。网页不会自动迁移不同网址的学习记录。
+只有主动点击同步才交换文件；Google Drive 的真实云端上传需在设备确认。

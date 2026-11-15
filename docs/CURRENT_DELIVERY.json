@@ -1,0 +1,47 @@
+{
+  "version": "0.12.1",
+  "source_sha": "8477794a6d0dece6232e379bccb03dea7c4fa0c9",
+  "workflow_run": "43692901942",
+  "main_integrated": true,
+  "original_cards": 561,
+  "annotated_cards": 561,
+  "cloze_spans": 2536,
+  "production_voices": [
+    "default"
+  ],
+  "android_apk_rebuilt": false,
+  "sha256": {
+    "preview/app.js": "e681db85f7c8cd4a1dd901d5a0d5928a8d6e7ff87cc91bcc2f0ef9f2f5189c6a",
+    "preview/full-data.js": "a85e48fbf0f32dcb54bd2841a97778c1d4bcdfcf3f69ff3276b3ffc8fd5fc4b1",
+    "data/suyi-full.json": "20b2236109e35b69244b7826da3e239a67b4f735e54f84977b5a6af0fa73d9e4",
+    "data/study-resources.json": "03419f4a66d151a7cafb5800ab8fa953833b340176a4231d3a8dcd077dbe4592",
+    "site/index.html": "e8e48da9ac0b1635fd9a8c9ff8da4c584bf868db8aedf968cd8d6346e8cdcd9d"
+  },
+  "limits": [
+    "Course ASR context is not a complete teacher-emphasis audit",
+    "Physical OPPO K5 and live Google Drive writeback not tested"
+  ],
+  "entrypoint_acceptance": {
+    "entrypoints": {
+      "preview/index.html": "PASS: source parent, five subjects, three modes, emphasis, global voice, retained progress",
+      "web-preview/index.html": "PASS: source parent, five subjects, three modes, emphasis, global voice, retained progress",
+      "site/index.html": "PASS: source parent, five subjects, three modes, emphasis, global voice, retained progress"
+    },
+    "user_data": "Synthetic acceptance records only; no real progress accessed",
+    "no_automatic_sync": "PASS",
+    "same_origin_existing_rating_retained": "PASS"
+  },
+  "behavior_acceptance": {
+    "mode": "real HTTP receiver + browser",
+    "all_561_annotations_exact_and_nonoverlapping": "PASS",
+    "data_driven_suyi_parent_five_existing_subjects": "PASS",
+    "hidden_full_cloze_hidden_and_original_fonts": "PASS",
+    "finger_left_next_right_previous_loop_no_toggle": "PASS",
+    "question_mistake_history_distinct_from_forgotten": "PASS",
+    "global_voice_folded_below_4x_no_automatic_network": "PASS",
+    "optional_voice_publish_import_global_choice_and_separate_source_retirement": "PASS",
+    "reload_hidden_keeps_voice_progress_and_source_retirement": "PASS"
+  },
+  "signed_apk_sha256": "46e603b7d8f471b2dc605be52c47e1e2ce84a38c932cc10c79bc0ec565496214",
+  "web_zip_sha256": "fadddad0ccce5040011f756b06ed211930e7eafd5b523b3935fcfd0c8c62e3e4"
+}
