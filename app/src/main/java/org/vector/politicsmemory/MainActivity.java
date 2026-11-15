@@ -22,6 +22,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -569,12 +570,51 @@ public final class MainActivity extends Activity {
         content.addView(pager,new FrameLayout.LayoutParams(-1,-1));
         store.saveSetting("last_card_id",session.get(start).id);store.saveSetting("last_card_at",Long.toString(System.currentTimeMillis()));
     }
+    /** Presentation-only: complete source spans and a shorter source-excerpt view. */
+    private boolean addFormattedAnswer(LinearLayout body,StudyCard card,boolean brief){
+        JSONArray blocks=studyResources.presentation(card,brief);
+        if(blocks==null)return false;
+        for(int i=0;i<blocks.length();i++){
+            JSONObject block=blocks.optJSONObject(i);if(block==null)continue;
+            String kind=block.optString("kind");
+            if("table".equals(kind)){
+                JSONArray rows=block.optJSONArray("rows");if(rows==null||rows.length()==0)continue;
+                LinearLayout table=column();table.setBackground(stroke(0xfff8faf7,8,0xffdbe5dc));
+                for(int j=0;j<rows.length();j++){
+                    JSONObject row=rows.optJSONObject(j);if(row==null)continue;
+                    LinearLayout cells=row();cells.setGravity(Gravity.TOP);
+                    TextView key=text("",12,DARK,true),value=text("",13,DARK,false);
+                    key.setText(studyResources.styledParts(card,row.optJSONArray("left")));
+                    value.setText(studyResources.styledParts(card,row.optJSONArray("right")));
+                    key.setLineSpacing(dp(2),1.1f);value.setLineSpacing(dp(2),1.1f);
+                    padding(key,8,7,5,7);padding(value,7,7,8,7);
+                    key.setOnClickListener(v->toggleAnswer());value.setOnClickListener(v->toggleAnswer());
+                    cells.addView(key,new LinearLayout.LayoutParams(0,-2,0.40f));
+                    cells.addView(value,new LinearLayout.LayoutParams(0,-2,0.60f));
+                    table.addView(cells,lp(-1,-2));
+                    if(j<rows.length()-1){
+                        View line=new View(this);line.setBackgroundColor(0xffe0e9df);table.addView(line,lp(-1,1));
+                    }
+                }
+                LinearLayout.LayoutParams params=lp(-1,-2);params.leftMargin=dp(8);
+                params.bottomMargin=dp(9);body.addView(table,params);
+            }else{
+                boolean heading="heading".equals(kind),item="item".equals(kind);
+                TextView line=text("",heading?14:14,DARK,heading);
+                line.setText(studyResources.styledParts(card,block.optJSONArray("parts")));
+                line.setLineSpacing(dp(3),1.10f);
+                padding(line,item?18:heading?4:0,heading?8:3,0,heading?5:5);
+                line.setOnClickListener(v->toggleAnswer());body.addView(line,lp(-1,-2));
+            }
+        }
+        return true;
+    }
     private View makeStudyPage(int index){
         StudyCard card=session.get(index);LinearLayout page=column();page.setBackgroundColor(WHITE);
         LinearLayout bar=row();padding(bar,18,3,14,3);
         TextView back=text("‹",28,MUTED,false);back.setContentDescription("返回资料");back.setGravity(Gravity.CENTER);bar.addView(back,lp(36,42));back.setOnClickListener(v->switchTab(1));
         TextView counter=text((index+1)+" / "+session.size(),11,MUTED,false);bar.addView(counter,new LinearLayout.LayoutParams(0,-2,1));
-        TextView reveal=text(studyMode==0?"揭晓":studyMode==1?"挖空":"回忆",12,TEAL,false);padding(reveal,8,8,8,8);bar.addView(reveal);reveal.setOnClickListener(v->toggleAnswer());
+        TextView reveal=text(studyMode==0?"揭晓":studyMode==1?"精简":"回忆",12,TEAL,false);padding(reveal,8,8,8,8);bar.addView(reveal);reveal.setOnClickListener(v->toggleAnswer());
         TextView sync=text("同步",12,MUTED,false);padding(sync,8,8,8,8);bar.addView(sync);sync.setOnClickListener(v->showFileMenu());sync.setOnLongClickListener(v->{connectComputer();return true;});page.addView(bar);
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);page.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         LinearLayout body=column();padding(body,21,8,21,22);scroll.addView(body);
@@ -584,8 +624,13 @@ public final class MainActivity extends Activity {
         TextView question=text(card.question,11,0xff778282,false);question.setLineSpacing(dp(2),1.15f);body.addView(question);spacer(body,14);
         View divider=new View(this);divider.setBackgroundColor(0xffe9eceb);body.addView(divider,lp(-1,1));spacer(body,15);
         if(showAnswer){
-            TextView answer=text("",14,DARK,false);answer.setText(studyResources.answer(card,studyMode==2));answer.setContentDescription(studyMode==2?"挖空版":"完整展示");answer.setLineSpacing(dp(3),1.10f);answer.setOnClickListener(v->toggleAnswer());body.addView(answer);
-            if(card.notes!=null&&!card.notes.trim().isEmpty()){spacer(body,13);TextView note=text(card.notes,9,0xffb54444,false);body.addView(note);}
+            if(!addFormattedAnswer(body,card,studyMode==2)){
+                TextView answer=text("",14,DARK,false);answer.setText(studyResources.answer(card,false));answer.setContentDescription("完整原文");answer.setLineSpacing(dp(3),1.10f);answer.setOnClickListener(v->toggleAnswer());body.addView(answer);
+            }
+            if(card.notes!=null&&!card.notes.trim().isEmpty()){
+                spacer(body,13);TextView note=text(card.notes,9,0xffb54444,false);
+                padding(note,18,0,0,0);body.addView(note);
+            }
         }else{
             TextView hint=text("先回忆，再点击揭晓",13,0xffa1a7a7,false);hint.setGravity(Gravity.CENTER);body.addView(hint,lp(-1,190));hint.setOnClickListener(v->toggleAnswer());
         }
