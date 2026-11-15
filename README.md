@@ -1,10 +1,10 @@
-# PoliticsMemory · 当前版本 v0.12.1
+# 闪背 · 当前版本 v0.12.2
 
 `main` 已合入四项背诵改动和固定签名安装修复，不再停留在 v0.11。当前代码、开发预览与完整网页必须使用同一份资料和学习资源索引。
 
 ## 唯一当前入口
 
-- Android：[v0.12.1 正式安装包](https://github.com/pq321/mcp_test/releases/download/v0.12.1-stable-install/PoliticsMemory-v0.12.1.apk)。桌面名称为「政治背诵·新版」，applicationId 为 `org.vector.politicsmemory.stable`。可与旧版并存，不能把并存安装称为旧版原位升级。
+- Android：v0.12.2「闪背」正式签名 APK 已在当前 ChatGPT 交付会话提供下载，GitHub Release 中的 [v0.12.1](https://github.com/pq321/mcp_test/releases/tag/v0.12.1-stable-install) 是旧安装包。v0.12.2 应用 ID 仍为 `org.vector.politicsmemory.stable`，版本号递增并沿用 v0.12.1 的正式签名，可覆盖安装 v0.12.1；不能覆盖不同应用 ID 的 v0.11。
 - 完整网页：[`web-preview/index.html`](web-preview/index.html)，保留旁边 `audio/`。可直接离线打开，或运行同目录 `start-sync.cmd`。
 - 电脑完整包：Release [`v0.12.1-stable-install`](https://github.com/pq321/mcp_test/releases/tag/v0.12.1-stable-install) 中的 `PoliticsMemory-v0.12.1-web.zip`。包含原561条录音及 Windows 同步接收器。
 - 开发预览：[`preview/index.html`](preview/index.html)，使用同一版四项功能；不要复制旧 Release 中的 HTML 覆盖当前页面。
