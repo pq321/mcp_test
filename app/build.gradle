@@ -5,16 +5,25 @@ android {
     namespace 'org.vector.politicsmemory'
     compileSdk 35
     defaultConfig {
-        applicationId 'org.vector.politicsmemory'
+        applicationId 'org.vector.politicsmemory.stable'
         minSdk 26
         targetSdk 34
-        versionCode 9
-        versionName '0.12.0'
+        versionCode 10
+        versionName '0.12.1'
         testInstrumentationRunner 'org.vector.politicsmemory.StudyControlsInstrumentation'
     }
-    signingConfigs { debug { storeFile file(System.getProperty('user.home') + '/.android/debug.keystore') } }
+    signingConfigs {
+        debug { storeFile file(System.getProperty('user.home') + '/.android/debug.keystore') }
+        stableRelease {
+            storeFile file(System.getenv('PM_SIGNING_KEYSTORE') ?: rootProject.file('.signing/NOT_PROVISIONED.p12').path)
+            storePassword System.getenv('PM_SIGNING_PASSWORD') ?: ''
+            keyAlias 'politicsmemory-stable'
+            keyPassword System.getenv('PM_SIGNING_PASSWORD') ?: ''
+            storeType 'PKCS12'
+        }
+    }
     buildTypes {
-        release { minifyEnabled false }
+        release { minifyEnabled false; signingConfig signingConfigs.stableRelease }
         debug { minifyEnabled false }
     }
     compileOptions {
