@@ -1,0 +1,32 @@
+name: Probe Xiaochen on Edge voice endpoint
+on:
+  push:
+    branches: [audio/shanbei-three-voices]
+    paths: [.github/workflows/shanbei-voice-probe.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check edge-tts
+      - name: Distinguish unavailable voice from temporary failure
+        run: |
+          python - <<'PY'
+          import asyncio,edge_tts
+          async def run():
+              voices=await edge_tts.list_voices()
+              for id in ['zh-CN-YunxiNeural','zh-CN-YunyangNeural','zh-CN-XiaochenNeural','zh-CN-XiaochengNeural','zh-CN-XiaochenMultilingualNeural']:
+                  print(id, 'PRESENT' if any(v['ShortName']==id for v in voices) else 'ABSENT',flush=True)
+              for id in ['zh-CN-XiaochenNeural','zh-CN-XiaochenMultilingualNeural']:
+                  try:
+                      await edge_tts.Communicate('这是闪背的声音测试。', id).save('/tmp/'+id+'.mp3')
+                      import os
+                      print('SYNTHESIS',id,os.path.getsize('/tmp/'+id+'.mp3'),flush=True)
+                  except Exception as e: print('SYNTHESIS_ERROR',id,type(e).__name__,str(e)[:150],flush=True)
+          asyncio.run(run())
+          PY
