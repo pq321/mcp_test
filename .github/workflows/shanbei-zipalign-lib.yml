@@ -1,0 +1,27 @@
+name: Export Android zipalign runtime
+on:
+  push:
+    branches: [brand/shanbei-0122]
+    paths:
+      - .github/workflows/shanbei-zipalign-lib.yml
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Export only public Android build-tools runtime
+        run: |
+          set -euo pipefail
+          TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          mkdir -p output
+          FILE="$(find "$TOOLS" -name 'libc++.so' -print -quit)"
+          test -n "$FILE"
+          cp "$FILE" output/libc++.so
+          file output/libc++.so
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zipalign-runtime-lib
+          path: output/
+          retention-days: 3
