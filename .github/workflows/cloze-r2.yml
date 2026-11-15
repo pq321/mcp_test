@@ -1,0 +1,131 @@
+name: Publish card-by-card cloze R2
+on:
+  push:
+    branches: [content/cloze-r2-20261115]
+    paths: [.github/workflows/cloze-r2.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: politics-cloze-r2
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Restore the exact per-card editorial specification
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64,lzma,hashlib,json
+          from pathlib import Path
+          parts=sorted(Path('source').glob('cloze-r2-*.b64'))
+          if parts:
+              assert len(parts)==7
+              raw=lzma.decompress(base64.b64decode(''.join(p.read_text().strip() for p in parts),validate=True))
+              assert hashlib.sha256(raw).hexdigest()=='33b83bd21f49e4f0afc9c7c0f6bf170915f4374b67dd0bf69441bafd2ed83802'
+              Path('data/study-cloze-r2.json').write_bytes(raw)
+          Path('before-resources.json').write_bytes(Path('data/study-resources.json').read_bytes())
+          PY
+          python scripts/expand_study_anchors.py
+          python scripts/validate_study_resources.py
+          python scripts/review_cloze_r2.py --out deliverables
+          python scripts/publish_study_resources.py --resources data/study-resources.json --previous-resources before-resources.json --audio-root web-preview --out deliverables/content-update.zip
+          python - <<'PY'
+          import hashlib,json,zipfile
+          from pathlib import Path
+          p=Path('data/study-resources.json');assert hashlib.sha256(p.read_bytes()).hexdigest()=='30221709478c3001637544e2571bf5feceea1fef05c631b92859141a4a7bdc1a'
+          old=json.loads(Path('before-resources.json').read_text());new=json.loads(p.read_text())
+          assert old['sources']==new['sources'] and old['voices']==new['voices']
+          zpath=Path('deliverables/content-update.zip')
+          with zipfile.ZipFile(zpath) as z:
+              assert z.namelist()==['update.json','study-resources.json'];files=[(n,z.read(n)) for n in z.namelist()]
+          with zipfile.ZipFile(zpath,'w',zipfile.ZIP_DEFLATED) as z:
+              for name,data in files:
+                  info=zipfile.ZipInfo(name,(2026,11,15,0,0,0));info.compress_type=zipfile.ZIP_DEFLATED;z.writestr(info,data)
+          PY
+          git diff --exit-code e0ef1c512ca921d4a1eee4ee4d8fa91cd39a71d4 -- app/src/main/java preview/app.js preview/app.css preview/index.html data/suyi-full.json web-preview/audio-index.json
+      - name: Build identical runtime with only the new annotations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p old-site old-download
+          gh release download v0.12.1-stable-install --pattern PoliticsMemory-v0.12.1-web.zip --dir old-download
+          unzip -q old-download/PoliticsMemory-v0.12.1-web.zip -d old-site
+          python scripts/build_preview.py --pack data/suyi-full.json --audio-index web-preview/audio-index.json --audio-dir web-preview/audio --out site
+          cp old-site/PoliticsMemory-Sync.exe site/
+          cp old-site/README.txt old-site/README.md site/
+          cp docs/STUDY_CONTROLS_V012.md site/CODEX_RESOURCES.md
+          cp docs/INSTALL_FIX_V0121.md site/INSTALLATION.md
+          cp docs/CLOZE_R2.md site/CLOZE_R2.md
+      - name: Verify old-to-new manual sync and all 561 rendered cards
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+          python qa/cloze_r2_update.py --old-site old-site --update deliverables/content-update.zip
+          python qa/study_controls_smoke.py --site site
+          python qa/current_entrypoints.py
+      - name: Record the exact scope and updated web package
+        run: |
+          set -euo pipefail
+          cp site/index.html web-preview/index.html
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          report=json.loads(Path('deliverables/CLOZE_R2_ACCEPTANCE.json').read_text())
+          report['workflow_run']=os.environ['GITHUB_RUN_ID'];report['editorial_source_commit']=os.environ['GITHUB_SHA']
+          report['manual_update_acceptance']=json.loads(Path('evidence/cloze-r2/manual-update.json').read_text())
+          report['unchanged_runtime']='PASS: Java, UI JS/CSS/HTML template, original knowledge and audio index match the approved baseline'
+          report['android_apk_rebuilt']=False
+          report['update_zip_sha256']=hashlib.sha256(Path('deliverables/content-update.zip').read_bytes()).hexdigest()
+          for path in ['deliverables/CLOZE_R2_ACCEPTANCE.json','docs/CLOZE_R2_ACCEPTANCE.json']:
+              Path(path).write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+          current=json.loads(Path('docs/CURRENT_DELIVERY.json').read_text())
+          current.update(annotation_edition='cloze-r2-20261115',annotation_revision=3,cloze_spans=report['cloze_spans'],annotation_report='docs/CLOZE_R2_ACCEPTANCE.json',android_apk_rebuilt=False,phone_delivery='Existing v0.12.1 receives R2 through manual content sync')
+          current['sha256']['data/study-resources.json']=report['resources_sha256']
+          current['sha256']['site/index.html']=hashlib.sha256(Path('site/index.html').read_bytes()).hexdigest()
+          Path('site/build-info.json').write_text(json.dumps(current,ensure_ascii=False,indent=2)+'\n')
+          Path('docs/CURRENT_DELIVERY.json').write_text(json.dumps(current,ensure_ascii=False,indent=2)+'\n')
+          PY
+          (cd site && zip -q -r ../deliverables/PoliticsMemory-v0.12.1-web.zip .)
+          python - <<'PY'
+          import json,hashlib
+          from pathlib import Path
+          p=Path('docs/CURRENT_DELIVERY.json');r=json.loads(p.read_text());r['web_zip_sha256']=hashlib.sha256(Path('deliverables/PoliticsMemory-v0.12.1-web.zip').read_bytes()).hexdigest();p.write_text(json.dumps(r,ensure_ascii=False,indent=2)+'\n')
+          PY
+          (cd deliverables && sha256sum content-update.zip PoliticsMemory-cloze-R2-review.html PoliticsMemory-v0.12.1-web.zip > CLOZE_R2_SHA256SUMS.txt)
+      - name: Integrate reviewed annotations without overwriting concurrent main changes
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = e0ef1c512ca921d4a1eee4ee4d8fa91cd39a71d4
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/study-cloze-r2.json data/study-resources.json app/src/main/assets/study-resources.json preview/study-resources.js web-preview/index.html docs/CLOZE_R2_ACCEPTANCE.json docs/CURRENT_DELIVERY.json
+          if compgen -G 'source/cloze-r2-*.b64' > /dev/null; then git rm source/cloze-r2-*.b64; fi
+          git commit -m 'content: reauthor 561 cloze cards with individual recall goals and cues [skip ci]'
+          git push origin HEAD:content/cloze-r2-20261115
+          git push origin HEAD:main
+      - name: Publish metadata and refreshed offline web, not a new APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload v0.12.1-stable-install deliverables/content-update.zip deliverables/PoliticsMemory-cloze-R2-review.html deliverables/CLOZE_R2_ACCEPTANCE.json deliverables/CLOZE_R2_SHA256SUMS.txt deliverables/PoliticsMemory-v0.12.1-web.zip --clobber
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cloze-r2-metadata-and-proof
+          path: |
+            deliverables/content-update.zip
+            deliverables/PoliticsMemory-cloze-R2-review.html
+            deliverables/CLOZE_R2_ACCEPTANCE.json
+            deliverables/CLOZE_R2_SHA256SUMS.txt
+            evidence/cloze-r2/
+          retention-days: 14
