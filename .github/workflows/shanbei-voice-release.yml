@@ -1,0 +1,66 @@
+name: Publish the two complete Shanbei voice tracks as a download
+on:
+  push:
+    branches: [audio/full-yunxi-yunyang-20261115]
+    paths: [.github/workflows/shanbei-voice-release.yml]
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download validated two-voice phone update package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p deliverables
+          curl --fail --silent --show-error --location --retry 3 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            --output deliverables/content-update.zip \
+            "https://api.github.com/repos/pq321/mcp_test/actions/artifacts/14165935888/zip"
+          echo "66a6a88776c8bc61d4f54a89e4ae1abb376b84e32505a329efc1ccce8cae6595  deliverables/content-update.zip" | sha256sum -c -
+      - name: Verify upload does not contain study history and can be imported
+        run: |
+          python - <<'PY'
+          import json,zipfile
+          p="deliverables/content-update.zip"
+          with zipfile.ZipFile(p) as z:
+              names=z.namelist()
+              assert len(names)==1124,len(names)
+              assert len([x for x in names if x.startswith("audio/default/2/") and x.endswith(".mp3")])==561
+              assert len([x for x in names if x.startswith("audio/yunxi/1/") and x.endswith(".mp3")])==561
+              assert not any("progress" in x.lower() or x.startswith("packs/") for x in names)
+              update=json.loads(z.read("update.json"))
+              data=json.loads(z.read("study-resources.json"))
+              assert update["resource_update"] is True
+              assert len(data["annotations"])==561
+              assert data["voices"]["default"]["name"]=="云扬（默认）"
+              assert data["voices"]["yunxi"]["name"]=="云希"
+          print("PASS: two full voice sets, no user progress or pack changes")
+          PY
+      - name: Release as audio asset, not APK or replacement app
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cat > notes.md <<'EOF'
+          闪背：云扬（默认）+ 云希（可切换）完整苏一语音包。
+          561张卡 × 2套 = 1122条MP3；原文、R2挖空标注及学习进度均未修改。
+          文件: content-update.zip（约303 MB），是安卓资源更新包，不是APK。
+          应用安装版保持现有版本，不需要卸载或重装。
+          由于当前连接器单文件100MB上传限制，本次未自动替换既有Google Drive文件。
+          可以在Google Drive网页版对原content-update.zip执行“管理版本/上传新版本”，保留原文件ID，之后手机点同步；
+          也可以将此ZIP下载到手机，在闪背长按“同步”重新关联进度文件和本地ZIP，再点同步。
+          仅使用经过验证的云扬和云希，不包含晓辰。
+          EOF
+          gh release create shanbei-two-voices-20261115 deliverables/content-update.zip \
+            --repo pq321/mcp_test \
+            --target "$GITHUB_SHA" \
+            --title '闪背·云扬默认＋云希双音色资源包（非APK）' \
+            --notes-file notes.md \
+            --latest=false
