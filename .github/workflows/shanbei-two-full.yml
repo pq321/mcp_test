@@ -1,0 +1,68 @@
+name: Shanbei two complete Mandarin voices
+on:
+  push:
+    branches: [audio/full-yunxi-yunyang-20261115]
+    paths: [.github/workflows/shanbei-two-full.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  synthesize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        voice: [default, yunxi]
+        shard: [0,1,2,3,4,5,6,7]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install synthesis and validation tools
+        run: |
+          python -m pip install --disable-pip-version-check edge-tts
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+      - name: Generate MP3s using exact original card answers
+        run: |
+          python -u scripts/generate_shanbei_two_full.py --voice "${{ matrix.voice }}" --shard "${{ matrix.shard }}" --shard-count 8 --out output
+      - name: Preserve shard tracks and manifest
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shanbei-${{ matrix.voice }}-part${{ matrix.shard }}
+          path: output/
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: warn
+  assemble:
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    needs: synthesize
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: shanbei-*-part*
+          path: collected/
+          merge-multiple: true
+      - name: Validate all 1122 tracks and preserve original R2 materials
+        run: |
+          set -euo pipefail
+          python scripts/validate_pack.py data/suyi-full.json
+          python scripts/validate_study_resources.py
+          python scripts/package_shanbei_two_voices.py --audio-root collected --out deliverables/content-update.zip
+          (cd deliverables && sha256sum content-update.zip > SHA256SUMS.txt)
+      - name: Export ready-to-import ZIP and exact resource manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: shanbei-yunyang-default-yunxi-full-package
+          path: deliverables/
+          retention-days: 14
+          compression-level: 0
