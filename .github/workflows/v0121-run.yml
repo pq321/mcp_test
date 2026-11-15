@@ -1,0 +1,18 @@
+name: Run completed installation fix
+on:
+  push:
+    branches: [fix/v0121-stable-install]
+    paths: [.github/workflows/v0121-run.yml]
+permissions:
+  actions: write
+  contents: read
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run list --repo pq321/mcp_test --workflow v0121-install-fix.yml --branch fix/v0121-stable-install --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' | while read id; do gh run cancel "$id" --repo pq321/mcp_test || true; done
+          gh workflow run v0121-install-fix.yml --repo pq321/mcp_test --ref fix/v0121-stable-install
