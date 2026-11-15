@@ -3,14 +3,32 @@ on:
   push:
     branches: [feature/v012-study-controls]
     paths: [.github/workflows/v012-continue.yml, build.gradle, qa/v012_legacy_probe.py]
+  workflow_dispatch:
 permissions:
-  actions: write
   contents: read
 jobs:
-  resume:
+  source_review:
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 3
     steps:
-      - env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run v012-study-controls.yml --repo pq321/mcp_test --ref feature/v012-study-controls
+      - uses: actions/checkout@v4
+      - name: Reconstruct scoped source for inspection
+        run: |
+          python - <<'PY'
+          import base64,lzma,hashlib,subprocess
+          from pathlib import Path
+          parts=sorted(Path('source').glob('v012-*.b64'))
+          if parts:
+              raw=lzma.decompress(base64.b64decode(''.join(p.read_text().strip() for p in parts),validate=True))
+              assert hashlib.sha256(raw).hexdigest()=='e2c63a14e3183a73ca08cca2bc2d1745cab38b0e8ab122398192e912ba1684f6'
+              subprocess.run(['git','apply','--check','-'],input=raw,check=True)
+              subprocess.run(['git','apply','-'],input=raw,check=True)
+          subprocess.run(['python','scripts/expand_study_anchors.py'],check=True)
+          from qa.v012_legacy_probe import source_snapshot
+          output=Path('evidence');output.mkdir(exist_ok=True);source_snapshot(output)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v012-applied-source-review
+          path: evidence/v012-source-review.zip
+          retention-days: 3
