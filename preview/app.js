@@ -1,19 +1,21 @@
-/* PoliticsMemory v0.10.1 — five-subject grouped recall, verified offline audio, paired progress upload, no analytics. */
+/* PoliticsMemory v0.11 — user-triggered progress+content synchronization; no background sync. */
 (()=>{'use strict';
 const PACK=window.POLITICS_PACK,AUDIO_INDEX=window.POLITICS_AUDIO_INDEX||{schema_version:1,items:{}};if(!PACK||!Array.isArray(PACK.cards)){document.getElementById('main').textContent='资料未加载。请保留预览文件完整。';return}
 const KEY='politics_suyi_grouped_v07',LEGACY='politics_web_preview_v1',SUBJECTS=['马原','毛中特','新思想','史纲','思修'],SPEEDS=[.75,1,1.25,1.5,1.75,2,2.5,3,3.5,4];
 const $=id=>document.getElementById(id),esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let stored={};try{stored=JSON.parse(localStorage.getItem(KEY)||'{}')||{}}catch(e){stored={}}
 let cards=PACK.cards.map(c=>({...c}));let reviews=stored.reviews||{},events=Array.isArray(stored.events)?stored.events:[],wrong=new Set(stored.wrong||[]),imports=Array.isArray(stored.imports)?stored.imports:[],wrongChanges=stored.wrongChanges||{};
+let retired=new Set(stored.retired||[]),contentRevision=Math.max(PACK.pack_revision||1,Number(stored.contentRevision)||0),audioUpdates=stored.audioUpdates||{};
+Object.assign(AUDIO_INDEX.items,audioUpdates);
 const validCard=c=>c&&typeof c.id==='string'&&c.id.length<200&&Array.isArray(c.path)&&c.path.length===3&&c.path.every(x=>typeof x==='string')&&typeof c.question==='string'&&typeof c.answer==='string';
 function mergeCards(list){for(const c of list){if(!validCard(c))throw Error('卡片必须有 id、三层 path、question、answer');const old=cards.find(x=>x.id===c.id);if(old){if((c.revision||1)<(old.revision||1))continue;if(old.question!==c.question||old.answer!==c.answer){if(reviews[c.id])reviews[c.id].needsReview=true}Object.assign(old,c)}else cards.push({...c})}}
-try{mergeCards(imports.filter(validCard))}catch(e){}
+try{mergeCards(imports.filter(validCard));cards=cards.filter(c=>!retired.has(c.id))}catch(e){}
 const sig=c=>{let h=2166136261;for(const ch of c.question+'\n'+c.answer)h=Math.imul(h^ch.codePointAt(0),16777619);return (h>>>0).toString(16)};
 for(const c of cards){const r=reviews[c.id];if(r&&r.contentSig&&r.contentSig!==sig(c))r.needsReview=true}
 let app={tab:stored.tab==='review'?'review':'books',show:!!stored.show,goal:Math.max(1,Math.min(500,Number(stored.goal)||25)),speed:SPEEDS.includes(Number(stored.speed))?Number(stored.speed):1,index:Number(stored.index)||0,scope:'全部知识组',positionAt:Number(stored.positionAt)||0,session:[],search:'',open:new Set(stored.open||[])};
 const savedCurrent=(stored.session||[])[Number(stored.index)||0]||'';app.session=cards.slice();app.index=Math.max(0,cards.findIndex(c=>c.id===savedCurrent));
 let toastTimer,moving=false,suppressUntil=0,gesture=null,audio=new Audio(),playingId='';audio.preload='none';audio.preservesPitch=true;audio.playbackRate=app.speed;
-function persist(){try{localStorage.setItem(KEY,JSON.stringify({version:10,reviews,events,wrong:[...wrong],wrongChanges,positionAt:app.positionAt,imports,show:app.show,goal:app.goal,speed:app.speed,index:app.index,scope:app.scope,session:app.session.map(c=>c.id),tab:app.tab,open:[...app.open]}));delete document.body.dataset.storage;return true}catch(e){document.body.dataset.storage='failed';toast('浏览器未允许保存，请点同步把进度保存到电脑。');return false}}
+function persist(){try{localStorage.setItem(KEY,JSON.stringify({version:11,reviews,events,wrong:[...wrong],wrongChanges,positionAt:app.positionAt,imports,retired:[...retired],contentRevision,audioUpdates,show:app.show,goal:app.goal,speed:app.speed,index:app.index,scope:app.scope,session:app.session.map(c=>c.id),tab:app.tab,open:[...app.open]}));delete document.body.dataset.storage;return true}catch(e){document.body.dataset.storage='failed';toast('浏览器未允许保存，请点同步把进度保存到电脑。');return false}}
 function toast(t){$('toast').textContent=t;$('toast').classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('on'),2400)}
 function state(c){return reviews[c.id]||{score:0,reviewCount:0,lastRating:'',lastYesDay:'',dueAt:0,lastReviewAt:0,needsReview:false}}
 function mastered(c){const r=state(c);return r.score>=3&&r.lastRating==='yes'&&!r.needsReview}
@@ -24,7 +26,7 @@ function current(){return app.session[app.index]}
 function setScope(list,name,start){app.session=cards.slice();app.scope=name;app.index=Math.max(0,app.session.findIndex(c=>c.id===(start||list[0]?.id)));app.tab='review';app.positionAt=Date.now();render();persist()}
 function nav(tab){app.tab=tab;if(tab==='review'&&!app.session.length){app.session=today();app.index=0;app.scope='今日复习'}render();persist()}
 function renderNav(){$('nav').innerHTML=[['review','复习'],['books','资料'],['stats','统计']].map(([k,t])=>`<button data-tab="${k}" class="${app.tab===k?'active':''}" aria-current="${app.tab===k?'page':'false'}">${t}</button>`).join('');$('nav').querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>nav(b.dataset.tab))}
-function toolbar(){const is=app.tab==='review',c=current();$('toolbar').innerHTML=is?'<button id="back" aria-label="返回资料">‹</button><span class="counter">'+(app.session.length?app.index+1:0)+' / '+app.session.length+'</span><button id="reveal">'+(app.show?'收起':'揭晓')+'</button><button id="more" aria-label="同步数据">同步</button>':'<span class="brand">政治背诵</span><button id="more" aria-label="同步数据">同步</button>';$('more').onclick=syncData;$('more').title='v0.10 · 点击同步；长按或右键重新连接';$('more').oncontextmenu=e=>{e.preventDefault();connectComputer()};if(is){$('back').onclick=()=>nav('books');$('reveal').onclick=toggle}}
+function toolbar(){const is=app.tab==='review',c=current();$('toolbar').innerHTML=is?'<button id="back" aria-label="返回资料">‹</button><span class="counter">'+(app.session.length?app.index+1:0)+' / '+app.session.length+'</span><button id="reveal">'+(app.show?'收起':'揭晓')+'</button><button id="more" aria-label="同步数据">同步</button>':'<span class="brand">政治背诵</span><button id="more" aria-label="同步数据">同步</button>';$('more').onclick=syncData;$('more').title='v0.11 · 仅点击时同步；长按重新连接';$('more').oncontextmenu=e=>{e.preventDefault();connectComputer()};if(is){$('back').onclick=()=>nav('books');$('reveal').onclick=toggle}}
 function render(){gesture=null;renderNav();$('ratings').innerHTML='';if(app.tab==='review'){if(!app.session.length)app.session=today();app.index=app.session.length?((app.index%app.session.length)+app.session.length)%app.session.length:0;renderReview()}else if(app.tab==='books')renderBooks();else renderStats();toolbar();updatePlayer()}
 function renderReview(){const c=current();if(!c){$('main').innerHTML='<div class="empty">当前没有待复习的知识组。<br>从资料选择科目或章节，随时开始背诵。</div>';return}
  const paragraphs=c.answer.split(/\n\s*\n/);const answer=paragraphs.length>1?paragraphs.map(p=>`<p>${esc(p)}</p>`).join(''):c.answer.split('\n').map(p=>`<div class="line">${esc(p)}</div>`).join('');
@@ -124,6 +126,37 @@ async function pullProgress(){
  if(!syncConfig||syncBusy)return;
  try{const o=await syncRequest(syncConfig,'/api/progress');if(o.revision>lastSyncedRevision)lastSyncedRevision=applyProgress(o)}catch(e){/* No false success, and no recurring popups while the computer is offline. */}
 }
+async function fetchContentOnManualSync(config){
+ const response=await syncRequest(config,'/api/content');
+ if(response.kind!=='politics-memory-content-update')throw Error('更新包协议不匹配');
+ if(response.status!=='available')return{added:0,updated:0,removed:0};
+ const pack=response.pack,manifest=response.audio_index;
+ if(!pack||pack.pack_id!=='politics-suyi-full'||pack.schema_version!==1||!Array.isArray(pack.cards)||pack.cards.length>20000)
+  throw Error('知识包内容不合法');
+ if(!manifest||manifest.pack_id!==pack.pack_id)throw Error('更新音频索引不匹配');
+ if(pack.pack_revision<=contentRevision)return{added:0,updated:0,removed:0};
+ const ids=new Set(),prior=new Map(cards.map(c=>[c.id,c]));
+ for(const c of pack.cards){if(!validCard(c)||ids.has(c.id))throw Error('知识点ID重复或格式非法');ids.add(c.id)}
+ const additions=pack.cards.filter(c=>!prior.has(c.id)).length;
+ const modifications=pack.cards.filter(c=>prior.has(c.id)&&JSON.stringify(prior.get(c.id))!==JSON.stringify(c)).length;
+ const removed=cards.filter(c=>!ids.has(c.id)).length;
+ // Preserve all review history; changes to wording require a new recall.
+ for(const c of pack.cards){const old=prior.get(c.id);if(old&&(old.question!==c.question||old.answer!==c.answer)&&reviews[c.id])reviews[c.id].needsReview=true}
+ for(const [id,item] of Object.entries(manifest.items||{})){
+  if(item.file!=='audio/'+id+'.mp3'||!ids.has(id)||!(/^[0-9a-f]{64}$/.test(item.text_sha256)))throw Error('新增录音索引无效');
+  const c=pack.cards.find(x=>x.id===id);
+  if(await sha256Hex(spokenText(c))!==item.text_sha256)throw Error('更新录音与正文不匹配');
+ }
+ // The server itself serves new audio from the selected Drive update ZIP.
+ audioUpdates={...audioUpdates,...(manifest.items||{})};Object.assign(AUDIO_INDEX.items,audioUpdates);
+ retired=new Set([...new Set([...PACK.cards.map(c=>c.id),...prior.keys()])].filter(id=>!ids.has(id)));
+ const baseline=new Map(PACK.cards.map(c=>[c.id,c]));
+ imports=pack.cards.filter(c=>!baseline.has(c.id)||JSON.stringify(baseline.get(c.id))!==JSON.stringify(c));
+ cards=pack.cards.map(c=>({...c}));contentRevision=pack.pack_revision;
+ const keep=current()?.id;app.session=cards.slice();app.index=Math.max(0,cards.findIndex(c=>c.id===keep));
+ if(!persist())throw Error('资料已读取，但无法保存到浏览器');
+ render();return{added:additions,updated:modifications,removed};
+}
 async function uploadToComputer(config=syncConfig){
  if(syncBusy)return;syncBusy=true;toast('正在同步到电脑…');
  try{
@@ -132,7 +165,8 @@ async function uploadToComputer(config=syncConfig){
   if(!ack.ok||ack.request_id!==payload.request_id||ack.received_sha256!==hash)throw Error('电脑保存回执不匹配');
   if(config!==syncConfig)saveConnection(config);
   const latest=await syncRequest(config,'/api/progress');lastSyncedRevision=applyProgress(latest);
-  if($('dialog').open)$('dialog').close();toast('已同步到电脑 · '+ack.review_count+'条学习记录');
+  const delta=await fetchContentOnManualSync(config);
+  if($('dialog').open)$('dialog').close();toast('同步完成 · '+ack.review_count+'条记录 · 资料新增'+delta.added+' 更新'+delta.updated+' 停用'+delta.removed);
  }catch(e){toast('尚未同步：'+(e.name==='AbortError'?'电脑未响应':e.message)+'。请打开电脑接收器并检查同一Wi-Fi；长按同步可重新连接。')}
  finally{syncBusy=false}
 }
@@ -152,7 +186,7 @@ function bootSync(){
  if(params.has('sync')){
   try{saveConnection(connectionFrom(params.get('sync')),params.get('pair')||'');history.replaceState(null,'',location.pathname+location.search);if(pairCode)connectComputer()}catch(e){toast(e.message)}
  }
- pullProgress();setInterval(pullProgress,2500);window.addEventListener('focus',pullProgress);
+ /* No automatic sync: only the visible Sync control performs requests. */
 }
 
 function sourceDetail(){const c=current();modal('本组来源',`<p>${esc(c.source||'导入资料')}</p><p class="small">${c.content_status==='VISUALLY_REORGANIZED'?'本组按苏一原图逐页阅读后重组。':'本组按既有结构化底稿和原有知识分支重组，未宣称逐字终审。'}</p>${c.source_notes?.length?'<h3>原图旁注留存（未逐字终审）</h3><p class="small warning">旁注用于对照来源，不作为已核实的老师技巧；未能准确定位的旁注按原页保留。</p>'+c.source_notes.map(n=>`<p class="source-note">${esc(n.text)}</p>`).join(''):''}<p class="small">编号：${esc(c.id)}</p>`)}
@@ -220,6 +254,6 @@ $('import').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{if(f
 document.addEventListener('keydown',e=>{if(app.tab!=='review'||$('dialog').open||e.target.closest('input,select,textarea')||e.ctrlKey||e.metaKey||e.altKey)return;if(e.code==='Space'){e.preventDefault();toggle()}else if(e.key==='ArrowLeft'){e.preventDefault();step(-1)}else if(e.key==='ArrowRight'){e.preventDefault();step(1)}else if(['1','2','3'].includes(e.key)){e.preventDefault();rate({1:'no',2:'fuzzy',3:'yes'}[e.key])}});
 $('dialog').addEventListener('click',e=>{if(e.target===$('dialog')){const r=$('dialog').getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)$('dialog').close()}});
 // Test hooks expose no network or user credentials. They exercise the same production paths.
-window.PoliticsMemory={version:10,sha256Hex,sha256Fallback,spokenText,syncData,progressSnapshot,applyProgress,getCards:()=>cards,getState:()=>({app,reviews,events,wrong:[...wrong]}),start:id=>{const c=cards.find(x=>x.id===id);if(c)setScope(cards.filter(x=>x.path.every((p,i)=>p===c.path[i])),c.path[2],id)},rate,toggle,step,nav,exportBackup,playCurrentAudio,toggleAudio,setSpeed,playQueue,getPlayback:()=>({playingId,source:playSource,queue:playList.map(c=>c.id),at:playAt,time:audio.currentTime,duration:audio.duration,paused:audio.paused,speed:audio.playbackRate})};
+window.PoliticsMemory={version:11,fetchContentOnManualSync,sha256Hex,sha256Fallback,spokenText,syncData,progressSnapshot,applyProgress,getCards:()=>cards,getState:()=>({app,reviews,events,wrong:[...wrong]}),start:id=>{const c=cards.find(x=>x.id===id);if(c)setScope(cards.filter(x=>x.path.every((p,i)=>p===c.path[i])),c.path[2],id)},rate,toggle,step,nav,exportBackup,playCurrentAudio,toggleAudio,setSpeed,playQueue,getPlayback:()=>({playingId,source:playSource,queue:playList.map(c=>c.id),at:playAt,time:audio.currentTime,duration:audio.duration,paused:audio.paused,speed:audio.playbackRate})};
 render();bootSync();
 })();

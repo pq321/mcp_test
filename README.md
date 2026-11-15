@@ -1,3 +1,9 @@
+# PoliticsMemory 0.11：手动同步与 Codex 知识包更新
+
+目前保留一个「同步」入口，严格只在点击时同步。首次选择两个 Google Drive 文档（进度 JSON + 内容 ZIP），更新包由 Codex 在 Drive 原位发布。电脑同步目录使用 Google Drive Desktop。当前不具备后台自动同步，Google Drive 真实端到端上传仍需在用户设备验证。详情：docs/DRIVE_MANUAL_V011.md。
+
+---
+
 # 当前版本 0.10.1 · 滑动方向已对调
 
 本次只反转0.10.0的手指滑动行为。最新说明：`docs/GESTURE_V0101.md`；验收：`docs/V0101_ACCEPTANCE.json`；完整网页：`web-preview/index.html`；安装包：Release `v0.10.1-gesture`。以下旧版方向说明不再适用。

@@ -5,7 +5,7 @@ The token lives in local-data/sync-config.json, never in Git or the APK.
 Only this file and Python's standard library are needed on a computer.
 """
 import argparse, hashlib, hmac, ipaddress, json, os, re, secrets, shutil, socket
-import sys, tempfile, threading, time, webbrowser
+import sys, tempfile, threading, time, webbrowser, zipfile
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -108,8 +108,40 @@ class Receiver(ThreadingHTTPServer):
             self.token=token or secrets.token_hex(32);atomic_json(config,{'token':self.token})
         if not re.fullmatch('[0-9a-f]{64}',self.token):raise ValueError('Invalid receiver credential')
         progress=self.data_dir/'progress.json'
-        self.progress=json.loads(progress.read_text()) if progress.exists() else empty()
+        self.progress_path=progress
+        self.content_path=self.data_dir/'content-update.zip'
+        self.progress=json.loads(progress.read_text(encoding='utf-8')) if progress.exists() else empty()
         super().__init__(address,Handler)
+    def reload_progress(self):
+        if self.progress_path.exists():
+            fresh=json.loads(self.progress_path.read_text(encoding='utf-8'))
+            if fresh.get('kind')!='politics-memory-progress' or fresh.get('schema_version')!=1:
+                raise ValueError('Google Drive progress.json has an incompatible format')
+            self.progress=fresh
+        return self.progress
+    def content_manifest(self):
+        if not self.content_path.is_file():return {'kind':'politics-memory-content-update','status':'not-configured'}
+        with zipfile.ZipFile(self.content_path,'r') as z:
+            names=set(z.namelist())
+            if 'update.json' not in names:raise ValueError('content-update.zip has no update.json')
+            meta=json.loads(z.read('update.json'))
+            if meta.get('kind')!='politics-memory-content-update' or meta.get('schema_version')!=1:
+                raise ValueError('content-update.zip protocol mismatch')
+            if 'pack.json' not in names:return {'kind':'politics-memory-content-update','status':'no-change','release':meta}
+            if 'audio-index.json' not in names:raise ValueError('content-update.zip missing audio-index.json')
+            pack=json.loads(z.read('pack.json'));audio=json.loads(z.read('audio-index.json'))
+            if pack.get('pack_id')!='politics-suyi-full' or audio.get('pack_id')!=pack.get('pack_id'):
+                raise ValueError('content-update.zip pack ID mismatch')
+            if len(pack.get('cards',[]))>20000:raise ValueError('content pack too large')
+            return {'kind':'politics-memory-content-update','status':'available','release':meta,'pack':pack,'audio_index':audio}
+    def get_overlay_audio(self,name):
+        if not self.content_path.is_file():return None
+        with zipfile.ZipFile(self.content_path,'r') as z:
+            if name not in z.namelist():return None
+            if z.getinfo(name).file_size>16*1024*1024:raise ValueError('Content update audio too large')
+            b=z.read(name)
+            if len(b)<500:raise ValueError('Content update audio missing')
+            return b
 
 class Handler(BaseHTTPRequestHandler):
     server_version='PoliticsMemorySync/1'
@@ -147,12 +179,33 @@ class Handler(BaseHTTPRequestHandler):
             if not self.authorized():return self.reply(401,{'error':'电脑连接码无效，请重新连接'})
             if path=='/api/health':return self.reply(200,{'service':'politics-memory-sync','protocol':1})
             if path=='/api/progress':
-                with self.server.lock: snapshot=self.server.progress
-                return self.reply(200,snapshot)
+                try:
+                    with self.server.lock:snapshot=self.server.reload_progress()
+                    return self.reply(200,snapshot)
+                except (OSError,ValueError,json.JSONDecodeError):return self.reply(503,{'error':'云端进度文件损坏或不可读取'})
+            if path=='/api/content':
+                try:return self.reply(200,self.server.content_manifest())
+                except (OSError,ValueError,zipfile.BadZipFile,json.JSONDecodeError):return self.reply(503,{'error':'云端知识包无法读取或未校验'})
             return self.reply(404,{'error':'Not found'})
         name=unquote(path).lstrip('/') or 'index.html'
         if name not in ['index.html','audio-index.json'] and not re.fullmatch(r'audio/[A-Za-z0-9._-]+\.mp3',name):
             return self.reply(404,{'error':'Not found'})
+        if name.startswith('audio/'):
+            try:overlay=self.server.get_overlay_audio(name)
+            except (OSError,ValueError,zipfile.BadZipFile):return self.reply(503,{'error':'更新音频读取失败'})
+            if overlay is not None:
+                size=len(overlay);start=0;end=size-1;status=200
+                requested=self.headers.get('Range')
+                if requested:
+                    match=re.fullmatch(r'bytes=(\d*)-(\d*)',requested)
+                    if not match or not (match[1] or match[2]):return self.reply(416,{'error':'Invalid range'})
+                    start=int(match[1]) if match[1] else max(0,size-int(match[2]));end=min(size-1,int(match[2])) if match[1] and match[2] else size-1
+                    if start>end or start>=size:return self.reply(416,{'error':'Invalid range'})
+                    status=206
+                self.send_response(status);self.send_header('Content-Type','audio/mpeg')
+                self.send_header('Content-Length',str(end-start+1));self.send_header('Accept-Ranges','bytes');self.send_header('Cache-Control','no-store')
+                if status==206:self.send_header('Content-Range',f'bytes {start}-{end}/{size}')
+                self.end_headers();self.wfile.write(overlay[start:end+1]);return
         target=self.server.root/name
         if not target.is_file() or not target.resolve().is_relative_to(self.server.root):return self.reply(404,{'error':'Not found'})
         size=target.stat().st_size;start=0;end=size-1;status=200
@@ -188,10 +241,15 @@ class Handler(BaseHTTPRequestHandler):
             if len(raw)!=size:raise ValueError('Incomplete request')
             payload=validate(json.loads(raw,parse_constant=lambda _:(_ for _ in ()).throw(ValueError('Invalid number'))))
             with self.server.lock:
-                combined=merge(self.server.progress,payload)
-                dest=self.server.data_dir/'progress.json'
+                combined=merge(self.server.reload_progress(),payload)
+                dest=self.server.progress_path
                 if dest.exists():shutil.copy2(dest,self.server.data_dir/'progress.previous.json')
-                atomic_json(dest,combined)
+                # Reuse the same Drive Desktop file ID by updating it in place.
+                # os.replace can create a new Drive file, invalidating Android's SAF URI.
+                raw=encode(combined)
+                dest.parent.mkdir(parents=True,exist_ok=True)
+                with dest.open('wb') as fp:fp.write(raw);fp.flush();os.fsync(fp.fileno())
+                if dest.read_bytes()!=raw:raise OSError('Cloud progress write verification failed')
                 self.server.progress=combined
             return self.reply(200,{'ok':True,'request_id':payload['request_id'],'received_sha256':hashlib.sha256(raw).hexdigest(),'revision':combined['revision'],'saved_at':combined['updated_at'],'review_count':len(payload['reviews'])})
         except (ValueError,TypeError,KeyError) as e:return self.reply(400,{'error':str(e)})
@@ -213,16 +271,41 @@ def main():
     parser=argparse.ArgumentParser(description='PoliticsMemory phone-to-computer sync receiver')
     parser.add_argument('--root',type=Path,default=default);parser.add_argument('--data-dir',type=Path)
     parser.add_argument('--port',type=int,default=18765);parser.add_argument('--no-browser',action='store_true')
+    parser.add_argument('--drive-folder',type=Path,help='Google Drive for desktop mirrored folder containing progress.json and content-update.zip')
+    parser.add_argument('--select-drive-folder',action='store_true')
     args=parser.parse_args()
     if not (args.root/'index.html').is_file():parser.error('index.html not found; keep this receiver beside the complete web preview')
     data=args.data_dir or args.root.parent/'local-data'
+    # Keep the receiver's bearer token in local-data, NEVER in Google Drive.
+    cloud=args.drive_folder
+    saved=data/'drive-folder-path.txt'
+    if cloud is None and saved.is_file():
+        cloud=Path(saved.read_text(encoding='utf-8').strip())
+    if args.select_drive_folder and cloud is None:
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+            window=tk.Tk();window.withdraw();window.attributes('-topmost',True)
+            path=filedialog.askdirectory(parent=window,title='选择 Google Drive 桌面版同步的 PoliticsMemory 文件夹')
+            window.destroy()
+            if path:cloud=Path(path)
+        except Exception as e:print('文件夹选择器不可用:',e,flush=True)
+        if cloud is not None:
+            data.mkdir(parents=True,exist_ok=True)
+            saved.write_text(str(cloud),encoding='utf-8')
     server=Receiver(('0.0.0.0',args.port),args.root,data)
+    if cloud is not None:
+        if not cloud.is_dir() or not (cloud/'progress.json').is_file():
+            parser.error('所选 Google Drive 文件夹无法读取 progress.json；请检查 Google Drive 桌面版同步')
+        server.progress_path=cloud/'progress.json'
+        server.content_path=cloud/'content-update.zip'
+        server.progress=server.reload_progress()
     host=lan_ip();connection=f'http://{host}:{server.server_port}#{server.token}'
     # Token stays in the browser fragment, not HTTP request logs or referrers.
     local=f'http://127.0.0.1:{server.server_port}/#'+urlencode({'sync':f'http://127.0.0.1:{server.server_port}#{server.token}','pair':connection})
     print('\nPoliticsMemory — 电脑同步已开启\n',flush=True)
     print('手机首次点击同步，粘贴此连接码（仅发给自己的设备）：\n'+connection,flush=True)
-    print('\n手机和电脑连接同一可信 Wi-Fi；电脑保持本窗口开启。\n进度文件：'+str(data/'progress.json')+'\nCtrl+C 关闭。',flush=True)
+    print('\n进度文件：'+str(server.progress_path)+'\n点击网页同步后会写入该文件；手机从 Google Drive 文档读取。\nCtrl+C 关闭。',flush=True)
     if not args.no_browser:threading.Timer(.3,lambda:webbrowser.open(local)).start()
     try:server.serve_forever()
     except KeyboardInterrupt:pass

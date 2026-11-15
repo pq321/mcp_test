@@ -25,7 +25,7 @@ import java.util.UUID;
 /** Single-file SQLite database; imports/backup use platform JSON, no network dependency. */
 final class StudyStore extends SQLiteOpenHelper {
     static final String DB = "politics-memory.db";
-    static final int SCHEMA = 2;
+    static final int SCHEMA = 3;
     final Context context;
 
     StudyStore(Context ctx) { super(ctx, DB, null, SCHEMA); context = ctx.getApplicationContext(); }
@@ -36,7 +36,7 @@ final class StudyStore extends SQLiteOpenHelper {
     }
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE packs (id TEXT PRIMARY KEY, title TEXT NOT NULL, rev INTEGER NOT NULL, imported_at INTEGER NOT NULL)");
-        db.execSQL("CREATE TABLE cards (id TEXT PRIMARY KEY, pack_id TEXT NOT NULL, rev INTEGER NOT NULL, subject TEXT NOT NULL, chapter TEXT NOT NULL, topic TEXT NOT NULL, type TEXT NOT NULL, question TEXT NOT NULL, answer TEXT NOT NULL, source TEXT NOT NULL, pos INTEGER NOT NULL, title TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', content_status TEXT NOT NULL DEFAULT '')");
+        db.execSQL("CREATE TABLE cards (id TEXT PRIMARY KEY, pack_id TEXT NOT NULL, rev INTEGER NOT NULL, subject TEXT NOT NULL, chapter TEXT NOT NULL, topic TEXT NOT NULL, type TEXT NOT NULL, question TEXT NOT NULL, answer TEXT NOT NULL, source TEXT NOT NULL, pos INTEGER NOT NULL, title TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', content_status TEXT NOT NULL DEFAULT '', retired INTEGER NOT NULL DEFAULT 0)");
         db.execSQL("CREATE INDEX cards_path ON cards(subject,chapter,topic,pos,id)");
         db.execSQL("CREATE TABLE reviews (card_id TEXT PRIMARY KEY, score INTEGER NOT NULL DEFAULT 0, review_count INTEGER NOT NULL DEFAULT 0, due_at INTEGER NOT NULL DEFAULT 0, last_review_at INTEGER NOT NULL DEFAULT 0, last_rating TEXT NOT NULL DEFAULT '', last_yes_day TEXT NOT NULL DEFAULT '', needs_review INTEGER NOT NULL DEFAULT 0)");
         db.execSQL("CREATE INDEX reviews_due ON reviews(due_at)");
@@ -53,6 +53,7 @@ final class StudyStore extends SQLiteOpenHelper {
             db.execSQL("ALTER TABLE cards ADD COLUMN content_status TEXT NOT NULL DEFAULT ''");
             db.execSQL("CREATE TABLE IF NOT EXISTS wrong_cards (card_id TEXT PRIMARY KEY, marked_at INTEGER NOT NULL)");
         }
+        if(oldVersion<3)db.execSQL("ALTER TABLE cards ADD COLUMN retired INTEGER NOT NULL DEFAULT 0");
     }
 
     static String readText(InputStream in, int maxBytes) throws IOException {
@@ -83,9 +84,9 @@ final class StudyStore extends SQLiteOpenHelper {
     }
 
     static final class ImportResult {
-        int added, updated, unchanged, skipped, restored;
+        int added, updated, unchanged, skipped, restored, removed;
         @Override public String toString() {
-            return "新增 " + added + "，更新 " + updated + "，未变 " + unchanged + "，跳过旧版 " + skipped + (restored>0?"，恢复进度 "+restored:"");
+            return "新增 " + added + "，更新 " + updated + "，未变 " + unchanged + "，跳过旧版 " + skipped + (restored>0?"，恢复进度 "+restored:"") + (removed>0?"，停用 "+removed:"");
         }
     }
     ImportResult importPayload(JSONObject root) throws JSONException {
@@ -155,7 +156,7 @@ final class StudyStore extends SQLiteOpenHelper {
         v.put("subject",c.subject);v.put("chapter",c.chapter);v.put("topic",c.topic);
         v.put("type",c.type);v.put("question",c.question);v.put("answer",c.answer);
         v.put("source",c.source);v.put("pos",c.order);v.put("title",c.title==null?"":c.title);
-        v.put("notes",c.notes==null?"":c.notes);v.put("content_status",c.contentStatus==null?"":c.contentStatus);
+        v.put("notes",c.notes==null?"":c.notes);v.put("content_status",c.contentStatus==null?"":c.contentStatus);v.put("retired",0);
         return v;
     }
     private static void mergePack(SQLiteDatabase db,Pack pack,ImportResult out) throws JSONException {
@@ -164,6 +165,16 @@ final class StudyStore extends SQLiteOpenHelper {
             if(pc.moveToFirst()) latest=pc.getInt(0);
         }
         if(pack.revision<latest) throw new JSONException("这是旧版素材包；现有包版本"+latest+"，导入版本"+pack.revision);
+        // New revision is authoritative. A removed card is archived, NOT deleted:
+        // historical ratings/events remain intact, and a later release can restore it.
+        if(latest>0 && pack.revision>latest){
+            try(Cursor existing=db.rawQuery("SELECT COUNT(*) FROM cards WHERE pack_id=? AND retired=0",new String[]{pack.id})){
+                if(existing.moveToFirst())out.removed=existing.getInt(0);
+            }
+            ContentValues retired=new ContentValues();retired.put("retired",1);
+            db.update("cards",retired,"pack_id=?",new String[]{pack.id});
+        }
+        int remainingAfterRetire=0;
         for(StudyCard card:pack.cards){
             try(Cursor c=db.rawQuery("SELECT pack_id,rev,subject,chapter,topic,type,question,answer,source,pos,title,notes,content_status FROM cards WHERE id=?",new String[]{card.id})){
                 if(!c.moveToFirst()) {
@@ -172,19 +183,34 @@ final class StudyStore extends SQLiteOpenHelper {
                 }
                 if(!pack.id.equals(c.getString(0))) throw new JSONException("卡片ID与其他素材包冲突："+card.id);
                 int existingRev=c.getInt(1);
-                if(card.revision<existingRev){out.skipped++;continue;}
+                if(card.revision<existingRev){
+                    // Do not archive a newer existing card due to stale per-card metadata.
+                    ContentValues active=new ContentValues();active.put("retired",0);
+                    db.update("cards",active,"id=?",new String[]{card.id});
+                    remainingAfterRetire++;out.skipped++;continue;
+                }
                 boolean semanticChanged=!card.type.equals(c.getString(5))||!card.question.equals(c.getString(6))||!card.answer.equals(c.getString(7));
                 boolean metadataChanged=!card.subject.equals(c.getString(2))||!card.chapter.equals(c.getString(3))
                         ||!card.topic.equals(c.getString(4))||!card.source.equals(c.getString(8))||card.order!=c.getInt(9)
                         ||!safe(card.title).equals(c.getString(10))||!safe(card.notes).equals(c.getString(11))
                         ||!safe(card.contentStatus).equals(c.getString(12));
-                if(!semanticChanged && !metadataChanged && card.revision==existingRev){out.unchanged++;continue;}
+                if(!semanticChanged && !metadataChanged && card.revision==existingRev){
+                    ContentValues active=new ContentValues();active.put("retired",0);
+                    db.update("cards",active,"id=?",new String[]{card.id});
+                    remainingAfterRetire++;out.unchanged++;continue;
+                }
                 db.update("cards",cardValues(card),"id=?",new String[]{card.id});
                 if(semanticChanged){
                     ContentValues rv=new ContentValues();rv.put("needs_review",1);rv.put("due_at",System.currentTimeMillis());
                     db.update("reviews",rv,"card_id=?",new String[]{card.id});
                 }
-                out.updated++;
+                remainingAfterRetire++;out.updated++;
+            }
+        }
+        // Count only cards actually hidden after this revision, not temporarily retired.
+        if(pack.revision>latest && latest>0){
+            try(Cursor archived=db.rawQuery("SELECT COUNT(*) FROM cards WHERE pack_id=? AND retired=1",new String[]{pack.id})){
+                if(archived.moveToFirst())out.removed=archived.getInt(0);
             }
         }
         ContentValues pv=new ContentValues();pv.put("id",pack.id);pv.put("title",pack.title);pv.put("rev",pack.revision);pv.put("imported_at",System.currentTimeMillis());
@@ -199,7 +225,7 @@ final class StudyStore extends SQLiteOpenHelper {
                 "COALESCE(r.score,0),COALESCE(r.review_count,0),COALESCE(r.due_at,0),COALESCE(r.last_review_at,0),"+
                 "COALESCE(r.last_rating,''),COALESCE(r.last_yes_day,''),COALESCE(r.needs_review,0),CASE WHEN w.card_id IS NULL THEN 0 ELSE 1 END "+
                 "FROM cards c LEFT JOIN reviews r ON r.card_id=c.id LEFT JOIN wrong_cards w ON w.card_id=c.id "+
-                "WHERE c.pack_id!='politics-sixiu-k' ORDER BY CASE WHEN c.pack_id='politics-suyi-full' THEN 0 ELSE 1 END,c.pack_id,c.pos,c.id";
+                "WHERE c.retired=0 AND c.pack_id!='politics-sixiu-k' ORDER BY CASE WHEN c.pack_id='politics-suyi-full' THEN 0 ELSE 1 END,c.pack_id,c.pos,c.id";
         try(Cursor c=getReadableDatabase().rawQuery(sql,null)){
             while(c.moveToNext()) {
                 StudyCard a=new StudyCard();
@@ -286,6 +312,70 @@ final class StudyStore extends SQLiteOpenHelper {
         String id=setting("last_card_id","");
         if(!id.isEmpty())out.put("cursor",new JSONObject().put("card_id",id).put("updated_at",Long.parseLong(setting("last_card_at","0"))));
         return out;
+    }
+
+    /** Import only progress; do not delete local ratings or alter materials.
+     *  The union is verified by the provider before this transaction starts.
+     */
+    void mergeRemoteProgress(JSONObject state) throws JSONException {
+        if(!"politics-memory-progress".equals(state.optString("kind"))||state.optInt("schema_version")!=1)
+            throw new JSONException("云端进度格式不兼容");
+        JSONArray reviews=state.optJSONArray("reviews"),events=state.optJSONArray("events");
+        if(reviews==null||events==null||reviews.length()>10000||events.length()>100000)
+            throw new JSONException("同步记录数量或结构异常");
+        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
+        try {
+            for(int i=0;i<reviews.length();i++){
+                JSONObject src=reviews.getJSONObject(i);String id=required(src,"card_id",128);
+                try(Cursor exists=db.rawQuery("SELECT 1 FROM cards WHERE id=?",new String[]{id})){
+                    if(!exists.moveToFirst())continue;
+                }
+                long timestamp=src.optLong("last_review_at");
+                long local=-1;boolean needs=false;
+                try(Cursor r=db.rawQuery("SELECT last_review_at,needs_review FROM reviews WHERE card_id=?",new String[]{id})){
+                    if(r.moveToFirst()){local=r.getLong(0);needs=r.getInt(1)!=0;}
+                }
+                if(timestamp<0||timestamp<local)continue;
+                ContentValues v=new ContentValues();v.put("card_id",id);v.put("score",Math.max(0,Math.min(4,src.optInt("score"))));
+                v.put("review_count",Math.max(0,src.optInt("review_count")));v.put("due_at",Math.max(0,src.optLong("due_at")));
+                v.put("last_review_at",timestamp);String rating=src.optString("last_rating","");
+                if(!rating.isEmpty()&&!"yes".equals(rating)&&!"no".equals(rating)&&!"fuzzy".equals(rating))throw new JSONException("评级不合法");
+                v.put("last_rating",rating);v.put("last_yes_day",src.optString("last_yes_day",""));
+                v.put("needs_review",(needs||src.optBoolean("needs_review",false))?1:0);
+                db.insertWithOnConflict("reviews",null,v,SQLiteDatabase.CONFLICT_REPLACE);
+            }
+            for(int i=0;i<events.length();i++){
+                JSONObject e=events.getJSONObject(i);ContentValues v=new ContentValues();
+                v.put("id",required(e,"id",128));v.put("card_id",required(e,"card_id",128));
+                String rating=required(e,"rating",8);
+                if(!"yes".equals(rating)&&!"no".equals(rating)&&!"fuzzy".equals(rating))throw new JSONException("事件评级非法");
+                v.put("rating",rating);v.put("score_before",e.optInt("score_before"));
+                v.put("score_after",e.optInt("score_after"));v.put("at",e.optLong("at"));
+                db.insertWithOnConflict("events",null,v,SQLiteDatabase.CONFLICT_IGNORE);
+            }
+            JSONObject incoming=state.optJSONObject("wrong_changes");
+            JSONObject changes=new JSONObject(setting("wrong_sync_changes","{}"));
+            if(incoming!=null)for(java.util.Iterator<String> keys=incoming.keys();keys.hasNext();){
+                String id=keys.next();JSONObject mark=incoming.getJSONObject(id);
+                if(!changes.has(id)||mark.optLong("at")>changes.getJSONObject(id).optLong("at")){
+                    changes.put(id,mark);
+                    if(mark.optBoolean("marked")){
+                        ContentValues v=new ContentValues();v.put("card_id",id);v.put("marked_at",mark.optLong("at"));
+                        db.insertWithOnConflict("wrong_cards",null,v,SQLiteDatabase.CONFLICT_REPLACE);
+                    }else db.delete("wrong_cards","card_id=?",new String[]{id});
+                }
+            }
+            ContentValues flags=new ContentValues();flags.put("key","wrong_sync_changes");flags.put("value",changes.toString());
+            db.insertWithOnConflict("settings",null,flags,SQLiteDatabase.CONFLICT_REPLACE);
+            JSONObject cursor=state.optJSONObject("cursor");
+            if(cursor!=null && cursor.has("card_id") && cursor.optLong("updated_at")>Long.parseLong(setting("last_card_at","0"))){
+                ContentValues id=new ContentValues();id.put("key","last_card_id");id.put("value",cursor.getString("card_id"));
+                db.insertWithOnConflict("settings",null,id,SQLiteDatabase.CONFLICT_REPLACE);
+                ContentValues at=new ContentValues();at.put("key","last_card_at");at.put("value",Long.toString(cursor.optLong("updated_at")));
+                db.insertWithOnConflict("settings",null,at,SQLiteDatabase.CONFLICT_REPLACE);
+            }
+            db.setTransactionSuccessful();
+        }finally{db.endTransaction();}
     }
 
     /** Codex-friendly backup: a single UTF-8 JSON containing full materials and rating log. */

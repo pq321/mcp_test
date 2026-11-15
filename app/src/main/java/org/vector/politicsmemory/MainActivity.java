@@ -39,7 +39,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** Platform views and offline audio; network is used only for explicit paired progress uploads. */
+/** Minimal offline review; manual Google Drive document access only on Sync. */
 public final class MainActivity extends Activity {
     private static final int TEAL=Color.rgb(54,172,157), ORANGE=Color.rgb(220,105,65);
     private static final int DARK=Color.rgb(49,54,55), MUTED=Color.rgb(130,136,138);
@@ -188,13 +188,49 @@ public final class MainActivity extends Activity {
         TextView t=text(title,22,DARK,false);bar.addView(t,new LinearLayout.LayoutParams(0,-2,1));
         if(menu){
             TextView button=text("同步",13,TEAL,true);padding(button,10,4,5,4);
-            button.setOnClickListener(v->showFileMenu());button.setOnLongClickListener(v->{connectComputer();return true;});bar.addView(button);
+            button.setOnClickListener(v->showFileMenu());button.setOnLongClickListener(v->{confirmReconnectDrive();return true;});bar.addView(button);
         }
         return bar;
     }
     private void showFileMenu(){
-        String connection=ProgressSync.saved(this);
-        if(connection.isEmpty())connectComputer();else uploadProgress(connection);
+        if(syncBusy)return;
+        if(!DriveFileSync.hasProgress(this)||!DriveFileSync.hasContent(this)){
+            new AlertDialog.Builder(this).setTitle("首次连接 Google Drive")
+                .setMessage("只需设置一次：从 Google Drive 依次选择 progress.json 和 content-update.zip。以后每次点「同步」才会读取或写入。请先在手机安装并登录 Google Drive。")
+                .setPositiveButton("选择文件",(d,w)->startActivityForResult(DriveFileSync.picker(true),DriveFileSync.PICK_PROGRESS))
+                .setNegativeButton("取消",null).show();
+        }else manualDriveSync();
+    }
+    private void confirmReconnectDrive(){
+        new AlertDialog.Builder(this).setTitle("重新关联云端文件")
+            .setMessage("仅重选两个 Google Drive 文件。手机本地背诵进度和资料不会被清除。")
+            .setPositiveButton("重新选择",(d,w)->{
+                DriveFileSync.clear(this);
+                startActivityForResult(DriveFileSync.picker(true),DriveFileSync.PICK_PROGRESS);
+            }).setNegativeButton("取消",null).show();
+    }
+    private void manualDriveSync(){
+        if(syncBusy)return;syncBusy=true;
+        Toast.makeText(this,"正在读取所选云端文件…",Toast.LENGTH_SHORT).show();
+        new Thread(()->{
+            DriveFileSync.Result result=null;String failure=null;
+            try{result=DriveFileSync.sync(getApplicationContext(),store);}
+            catch(Exception e){failure=e.getMessage();}
+            DriveFileSync.Result outcome=result;String error=failure;
+            runOnUiThread(()->{
+                syncBusy=false;if(isFinishing()||isDestroyed())return;
+                if(error!=null){
+                    new AlertDialog.Builder(this).setTitle("同步未全部完成")
+                       .setMessage("手机本地数据仍保留。请检查已选 Google Drive 文件可读写、云盘是否联网。\n\n"+error)
+                       .setPositiveButton("重新同步",(d,w)->manualDriveSync())
+                       .setNeutralButton("重新选择文件",(d,w)->confirmReconnectDrive())
+                       .setNegativeButton("关闭",null).show();
+                }else{
+                    int was=currentTab;switchTab(was);
+                    Toast.makeText(this,outcome.message(),Toast.LENGTH_LONG).show();
+                }
+            });
+        },"manual-drive-sync").start();
     }
     private void connectComputer(){
         LinearLayout body=column();padding(body,22,6,22,6);
@@ -575,6 +611,18 @@ public final class MainActivity extends Activity {
         super.onActivityResult(req,result,data);
         if(result!=RESULT_OK||data==null||data.getData()==null)return;
         Uri uri=data.getData();
+        if(req==DriveFileSync.PICK_PROGRESS){
+            try{
+                DriveFileSync.remember(this,true,data);
+                startActivityForResult(DriveFileSync.picker(false),DriveFileSync.PICK_CONTENT);
+            }catch(Exception e){error("进度文件关联失败："+e.getMessage());}
+            return;
+        }
+        if(req==DriveFileSync.PICK_CONTENT){
+            try{DriveFileSync.remember(this,false,data);manualDriveSync();}
+            catch(Exception e){error("更新包关联失败："+e.getMessage());}
+            return;
+        }
         if(req==IMPORT){
             new Thread(()->{
                 try(InputStream in=getContentResolver().openInputStream(uri)){

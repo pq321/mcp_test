@@ -34,7 +34,7 @@ final class AudioZipImporter {
                     String name=ze.getName();
                     if(ze.isDirectory()){zin.closeEntry();continue;}
                     if(++entries>20020)throw new IOException("ZIP文件数量过多");
-                    if(!("pack.json".equals(name)||"audio-index.json".equals(name)||name.matches("audio/[A-Za-z0-9._-]{1,128}\\.mp3")))
+                    if(!("pack.json".equals(name)||"audio-index.json".equals(name)||"update.json".equals(name)||name.matches("audio/[A-Za-z0-9._-]{1,128}\\.mp3")))
                         throw new IOException("文件路径不符合素材包规范: "+name);
                     if(!names.add(name))throw new IOException("ZIP重复文件: "+name);
                     File target=new File(staging,name);
@@ -118,6 +118,7 @@ final class AudioZipImporter {
             byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1)out.write(b,0,n);out.getFD().sync();
         }
     }
+    static String digestFileForSync(File f)throws Exception{return digestFile(f);}
     private static String digestFile(File f)throws Exception{
         MessageDigest md=MessageDigest.getInstance("SHA-256");
         try(InputStream in=new FileInputStream(f)){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1)md.update(b,0,n);}

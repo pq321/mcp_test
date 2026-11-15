@@ -1,0 +1,21 @@
+{
+  "version": "0.11.0",
+  "run_id": "43669280352",
+  "tests": {
+    "manual_only_local_browser": "PASS",
+    "desktop_mirrored_file_receiver": "PASS",
+    "content_publisher_delete_and_hash": "PASS",
+    "android_build_and_start": "PASS"
+  },
+  "limitations": [
+    "No real Google Drive DocumentsProvider present in emulator",
+    "SAF provider upload is asynchronous and lacks server-side receipt"
+  ],
+  "sha256": {
+    "app/build/outputs/apk/debug/app-debug.apk": "ed0f087781ecf13e630ddbe80fbd57395f4bc5d64f60826cdd30bf57f933125b",
+    "web-preview/index.html": "9c52d95d7bcd66fc36207b12f3a23243ed2fe9a3cdb65a7e9ae97656bfd07466",
+    "preview/app.js": "a01d8cc286013ef400f4ac3506ae8949a778a01cf2aa0c02061e122bed094141",
+    "desktop/progress_server.py": "f7b953f719b83cc9a35f5c86abfa849a3df671faa4c78999e8e673730eea0711",
+    "data/suyi-full.json": "20b2236109e35b69244b7826da3e239a67b4f735e54f84977b5a6af0fa73d9e4"
+  }
+}
