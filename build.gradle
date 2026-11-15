@@ -1,3 +1,17 @@
 plugins {
     id 'com.android.application' version '8.7.3' apply false
 }
+
+// Debug-only preview key. Never replaces or claims compatibility with the lost v0.11 key.
+// Keep its real location consistent with the Actions cache; never commit the key itself.
+def previewDebugKey = new File(System.getProperty('user.home'), '.android/debug.keystore')
+if (!previewDebugKey.isFile()) {
+    previewDebugKey.parentFile.mkdirs()
+    exec {
+        commandLine new File(System.getProperty('java.home'), 'bin/keytool').absolutePath,
+            '-genkeypair', '-keystore', previewDebugKey.absolutePath,
+            '-storepass', 'android', '-keypass', 'android', '-alias', 'androiddebugkey',
+            '-dname', 'CN=Android Debug,O=Android,C=US', '-keyalg', 'RSA',
+            '-keysize', '2048', '-validity', '10000', '-storetype', 'JKS', '-noprompt'
+    }
+}
