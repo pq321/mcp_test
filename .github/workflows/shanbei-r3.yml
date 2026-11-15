@@ -1,0 +1,90 @@
+name: Shanbei R3 layout-and-brief delivery check
+on:
+  push:
+    branches: [feature/shanbei-layout-brief-r3]
+    paths: [.github/workflows/shanbei-r3.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Verify and reconstruct 561 card presentations from exact source
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/assets/audio artifacts
+          python scripts/expand_study_anchors.py
+          sha256sum data/study-resources.json | tee /tmp/r3-sha.txt
+          python scripts/expand_study_anchors.py
+          sha256sum -c /tmp/r3-sha.txt
+          python scripts/validate_study_resources.py
+          python scripts/validate_audio.py data/suyi-full.json web-preview
+          python - <<'PY'
+          import json,hashlib
+          from pathlib import Path
+          cards=json.loads(Path('data/suyi-full.json').read_bytes())['cards']
+          res=json.loads(Path('data/study-resources.json').read_bytes())
+          expected='20b2236109e35b69244b7826da3e239a67b4f735e54f84977b5a6af0fa73d9e4'
+          assert hashlib.sha256(Path('data/suyi-full.json').read_bytes()).hexdigest()==expected
+          assert len(cards)==len(res['annotations'])==561
+          tables=0;full=0;brief=0
+          for c in cards:
+              ans=c['answer'];utf16=ans.encode('utf-16-le');n=len(utf16)//2
+              a=res['annotations'][c['id']]
+              assert a['revision']==4 and hashlib.sha256(ans.encode()).hexdigest()==a['answer_sha256']
+              spans=[];shortspans=[]
+              for key,target in [('full_layout',spans),('brief_layout',shortspans)]:
+                  for b in a[key]:
+                      if b['kind']=='table':
+                          if key=='full_layout':tables+=1
+                          for row in b['rows']:
+                              for side in ['left','right']:
+                                  q=row[side]
+                                  if key=='full_layout':target.append(q)
+                                  else:target.extend(q)
+                      else:target.extend(b['parts'])
+                  for x,y in target:assert 0<=x<y<=n,(c['id'],x,y,n)
+              whole=''.join(utf16[x*2:y*2].decode('utf-16-le') for x,y in spans)
+              assert ''.join(whole.split())==''.join(ans.split()),c['id']
+              full+=len(ans);brief+=sum(y-x for x,y in shortspans)
+          assert tables>=100 and brief<full
+          print('PASS: 561 source exact complete layouts and source-only brief, tables',tables,
+                'source chars',full,'brief UTF16 chars',brief)
+          PY
+      - name: Compile with original offline recordings, unsigned for separate secure signing
+        run: |
+          set -euo pipefail
+          cp data/suyi-full.json app/src/main/assets/suyi-full.json
+          cp web-preview/audio-index.json app/src/main/assets/audio-index.json
+          cp web-preview/audio/*.mp3 app/src/main/assets/audio/
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('app/build.gradle');s=p.read_text()
+          needle='release { minifyEnabled false; signingConfig signingConfigs.stableRelease }'
+          assert needle in s
+          p.write_text(s.replace(needle,'release { minifyEnabled false }'))
+          PY
+          gradle --no-daemon :app:assembleDebug :app:assembleRelease
+          cp app/build/outputs/apk/release/app-release-unsigned.apk artifacts/Shanbei-v0.12.4-unsigned.apk
+          cp data/study-resources.json artifacts/study-resources-r3.json
+          TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$TOOLS/aapt" dump badging artifacts/Shanbei-v0.12.4-unsigned.apk | grep -E "package:|application-label:" | tee artifacts/app-identity.txt
+          grep -q "application-label:'闪背'" artifacts/app-identity.txt
+          grep -q "versionCode='13' versionName='0.12.4'" artifacts/app-identity.txt
+          sha256sum artifacts/Shanbei-v0.12.4-unsigned.apk > artifacts/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shanbei-r3-compiled-content
+          path: artifacts/
+          retention-days: 14
