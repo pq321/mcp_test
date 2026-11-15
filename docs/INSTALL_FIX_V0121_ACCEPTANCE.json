@@ -1,0 +1,23 @@
+{
+  "version": "0.12.1",
+  "application_id": "org.vector.politicsmemory.stable",
+  "legacy_application_id": "org.vector.politicsmemory",
+  "install_without_uninstalling_legacy": "PASS",
+  "both_apps_launch": "PASS",
+  "release_apk_reinstall_preserves_new_rating_and_cursor": "PASS",
+  "legacy_database_files_unchanged": "PASS",
+  "legacy_rating_and_cursor_still_accessible": "PASS",
+  "three_study_modes_in_release": "PASS",
+  "production_logic_and_content_unchanged_from_v012": "PASS",
+  "legacy_database_sha256": {
+    "politics-memory.db": "a735df354da3b421b22d09fcf87ba2ee4071dbfa70f55b201e23025369438f68",
+    "politics-memory.db-shm": "c3496558f33cd4361a7c880267ecc2f593492a3f7a6bccfddbbe9eb8a97f362e",
+    "politics-memory.db-wal": "80e41a461eb3dda461073bcdeeda9717beaa2eae8caee2dc70cb3cef56c70d08"
+  },
+  "signing_verification": "Verifies\nVerified using v1 scheme (JAR signing): false\nVerified using v2 scheme (APK Signature Scheme v2): true\nVerified using v3 scheme (APK Signature Scheme v3): false\nVerified using v3.1 scheme (APK Signature Scheme v3.1): false\nVerified using v3.2 scheme (APK Signature Scheme v3.2): false\nVerified using v4 scheme (APK Signature Scheme v4): false\nVerified for SourceStamp: false\nNumber of signers: 1\nV2 Signer: certificate DN: CN=PoliticsMemory Stable, OU=Personal study, O=Vector, C=CN\nV2 Signer: certificate SHA-256 digest: 210b4c1f8d9acd744da69a0f72b1895b6cad1c31a9c20f2323043e2a061df23b\nV2 Signer: certificate SHA-1 digest: d7bcc1f43b5a2eab0f6914c2e4f36fddc8923d77\nV2 Signer: certificate MD5 digest: 8feeb861b321610b50238cc6bbb0cdf8\nV2 Signer: key algorithm: RSA\nV2 Signer: key size (bits): 3072\nV2 Signer: public key SHA-256 digest: 4eb5798397b8bc6fdc5bebcd089cd19a0b81af62f1ac30db8807e300ba7340d4\nV2 Signer: public key SHA-1 digest: af18e3b1595b8a7deb33f1d7adc325ca66004d9c\nV2 Signer: public key MD5 digest: d4fbcac5843ae4b8a92422a307ccd7a0\n",
+  "device": "Android 29 emulator; not physical OPPO K5",
+  "limits": [
+    "New and old private databases are separate. User progress is not automatically migrated.",
+    "Real phone and Google Drive upload require user-device verification."
+  ]
+}
