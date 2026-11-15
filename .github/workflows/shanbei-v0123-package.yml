@@ -1,0 +1,50 @@
+name: Shanbei v0.12.3 offline packaging
+on:
+  push:
+    branches: [fix/shanbei-v0123-four-only]
+    paths: [.github/workflows/shanbei-v0123-package.yml]
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Check user-approved files and build unsigned APK
+        run: |
+          set -euo pipefail
+          python scripts/validate_pack.py data/suyi-full.json
+          python scripts/validate_study_resources.py
+          python scripts/validate_audio.py data/suyi-full.json web-preview
+          mkdir -p app/src/main/assets/audio output
+          cp data/suyi-full.json app/src/main/assets/suyi-full.json
+          cp data/study-resources.json app/src/main/assets/study-resources.json
+          cp web-preview/audio-index.json app/src/main/assets/audio-index.json
+          cp web-preview/audio/*.mp3 app/src/main/assets/audio/
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('app/build.gradle');s=p.read_text()
+          needle='release { minifyEnabled false; signingConfig signingConfigs.stableRelease }'
+          assert s.count(needle)==1
+          p.write_text(s.replace(needle,'release { minifyEnabled false }'))
+          PY
+          gradle --no-daemon :app:assembleRelease
+          cp app/build/outputs/apk/release/app-release-unsigned.apk output/Shanbei-v0.12.3-unsigned.apk
+          TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$TOOLS/aapt" dump badging output/Shanbei-v0.12.3-unsigned.apk | grep -E "package:|application-label:" | tee output/verified-label.txt
+          grep -q "application-label:'闪背'" output/verified-label.txt
+          grep -q "versionCode='12' versionName='0.12.3'" output/verified-label.txt
+          sha256sum output/Shanbei-v0.12.3-unsigned.apk > output/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shanbei-0123-unsigned
+          path: output/
+          retention-days: 14
