@@ -1,0 +1,65 @@
+name: Build Shanbei unsigned for owner-held signing
+on:
+  push:
+    branches: [brand/shanbei-0122]
+    paths:
+      - .github/workflows/shanbei-unsigned.yml
+      - app/src/main/AndroidManifest.xml
+      - app/build.gradle
+      - app/src/main/java/org/vector/politicsmemory/SpeechService.java
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  unsigned:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Verify this is branding-only
+        run: |
+          set -euo pipefail
+          git diff --name-only bf4898db113d45cbd4eea33ed482a1e6943ad88b HEAD | grep -vE '^(.github/workflows/shanbei-unsigned.yml|app/src/main/AndroidManifest.xml|app/build.gradle|app/src/main/java/org/vector/politicsmemory/SpeechService.java)$' | tee /tmp/unexpected.txt
+          test ! -s /tmp/unexpected.txt
+          grep -q 'android:label="闪背"' app/src/main/AndroidManifest.xml
+          grep -q "applicationId 'org.vector.politicsmemory.stable'" app/build.gradle
+          grep -q 'versionCode 11' app/build.gradle
+          python scripts/validate_pack.py data/suyi-full.json
+          python scripts/validate_study_resources.py
+          python scripts/validate_audio.py data/suyi-full.json web-preview
+      - name: Assemble unsigned release with original offline resources
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/assets/audio output
+          cp data/suyi-full.json app/src/main/assets/suyi-full.json
+          cp data/study-resources.json app/src/main/assets/study-resources.json
+          cp web-preview/audio-index.json app/src/main/assets/audio-index.json
+          cp web-preview/audio/*.mp3 app/src/main/assets/audio/
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('app/build.gradle');t=p.read_text()
+          old='release { minifyEnabled false; signingConfig signingConfigs.stableRelease }'
+          assert old in t
+          p.write_text(t.replace(old,'release { minifyEnabled false }'))
+          PY
+          gradle --no-daemon :app:assembleRelease
+          cp app/build/outputs/apk/release/app-release-unsigned.apk output/shanbei-unsigned.apk
+          TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          cp "$TOOLS/lib/apksigner.jar" output/apksigner.jar
+          cp "$TOOLS/zipalign" output/zipalign
+          cp "$TOOLS/aapt2" output/aapt2
+          chmod +x output/zipalign output/aapt2
+          "$TOOLS/aapt" dump badging output/shanbei-unsigned.apk | grep -E "package:|application-label:"
+          sha256sum output/shanbei-unsigned.apk > output/UNSIGNED_SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shanbei-unsigned-and-android-buildtools
+          path: output/
+          retention-days: 14
