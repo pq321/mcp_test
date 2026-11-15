@@ -1,15 +1,34 @@
 #!/usr/bin/env python3
-"""Small installed-APK acceptance. Run seed with v0.11, verify after install -r v0.12."""
+"""One installed-APK scenario; legacy certificate and restored-data checks are separate."""
 import subprocess as sp,time,re,json,xml.etree.ElementTree as ET,argparse
 from pathlib import Path
 root=Path(__file__).resolve().parents[1];out=root/'evidence';out.mkdir(exist_ok=True);pkg='org.vector.politicsmemory'
-def adb(*args):return sp.check_output(['adb',*args],timeout=40).decode(errors='replace')
+def adb(*args):return sp.check_output(['adb',*args],stderr=sp.STDOUT,timeout=40).decode(errors='replace')
 def shell(*args):return adb('shell',*args)
 def nodes():
-    shell('uiautomator','dump','/sdcard/politics-ui.xml');return list(ET.fromstring(adb('exec-out','cat','/sdcard/politics-ui.xml')).iter('node'))
+    deadline=time.monotonic()+25;last='no hierarchy'
+    while time.monotonic()<deadline:
+        try:
+            shell('rm','-f','/sdcard/politics-ui.xml')
+            status=shell('uiautomator','dump','/sdcard/politics-ui.xml')
+            if 'dumped to:' not in status:
+                last=status;time.sleep(.5);continue
+            raw=adb('exec-out','cat','/sdcard/politics-ui.xml')
+            tree=ET.fromstring(raw)
+            found=list(tree.iter('node'))
+            if found:return found
+            last='empty hierarchy'
+        except (sp.CalledProcessError,ET.ParseError) as error:last=str(error)
+        time.sleep(.5)
+    raise AssertionError('Android did not return a live UI hierarchy: '+last)
 def find(text):return [n for n in nodes() if n.get('text')==text or n.get('content-desc')==text]
 def match(text):
-    found=find(text);assert found,'UI not found: '+text;return found[0]
+    deadline=time.monotonic()+15
+    while True:
+        found=find(text)
+        if found:return found[0]
+        if time.monotonic()>=deadline:raise AssertionError('UI not found: '+text)
+        time.sleep(.3)
 def bounds(text):return list(map(int,re.findall(r'\d+',match(text).get('bounds'))))
 def tap(text):
     a,b,c,d=bounds(text);assert d>b and c>a,('not visible',text);shell('input','tap',str((a+c)//2),str((b+d)//2));time.sleep(.4)
@@ -27,15 +46,17 @@ def wait_media(check):
     raise AssertionError(state)
 def menu():
     tap('播放速度')
-    # Menu intentionally scrolls on compact devices; voice remains after the final speed.
     for _ in range(4):
         if find('声音'):return
         shell('input','swipe','850','1750','850','800','250');time.sleep(.2)
     match('声音')
 def run(phase):
-    shell('wm','size','1080x2340');shell('wm','density','440');shell('am','force-stop',pkg);shell('am','start','-n',pkg+'/.MainActivity');time.sleep(4)
+    shell('wm','size','1080x2340');shell('wm','density','440')
+    shell('input','keyevent','224');shell('wm','dismiss-keyguard')
+    shell('am','force-stop',pkg);shell('am','start','-W','-n',pkg+'/.MainActivity')
+    match('复习')
     if phase=='seed':
-        tap('复习');tap('揭晓');tap('记住');match('2 / 561');print('PASS: v0.11 first rating seeded before in-place upgrade');return
+        tap('复习');tap('揭晓');tap('记住');match('2 / 561');print('PASS: v0.11 first rating seeded before compatibility probe');return
     report={};screenshot('v012-android-catalogue');tap('▸  苏一');match('▸  马原');screenshot('v012-android-suyi')
     tap('复习');match('2 / 561');match('先回忆，再点击揭晓');tap('先回忆，再点击揭晓');match('完整展示');screenshot('v012-android-complete')
     tap('完整展示');match('挖空版');screenshot('v012-android-cloze');tap('挖空版');match('先回忆，再点击揭晓')
@@ -49,7 +70,7 @@ def run(phase):
     for _ in range(4):
         if find('4.0×'):break
         shell('input','swipe','850','1750','850','800','250');time.sleep(.2)
-    tap('4.0×');tap('播放或暂停');wait_media(lambda x:x['active']=='true' and x['speed']=='4.0' and int(x['position_ms'])>0)
+    tap('4.0×');tap('播放或暂停');wait_media(lambda x:x['active']=='true' and x['speed']=='4.0' and int(x['position_ms'] or 0)>0)
     tap('播放或暂停');before=wait_media(lambda x:x['paused']=='true');menu();tap('声音');tap('默认声音');wait_media(lambda x:x['paused']=='true' and x['card_id']==before['card_id'] and x['speed']=='4.0')
     report['real_media_decode_4x_voice_switch_keeps_pause_and_card']='PASS'
     tap('播放或暂停');a,b,c,d=bounds('播放进度');shell('input','tap',str(c-20),str((b+d)//2));ids=[x['id'] for x in json.loads((root/'data/suyi-full.json').read_text())['cards']]
@@ -60,4 +81,9 @@ def run(phase):
     report['device']='Android 29 emulator 1080x2340 / 440dpi; not physical OPPO K5'
     (out/'v012-android.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n');print(json.dumps(report,ensure_ascii=False))
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--phase',choices=['seed','verify'],required=True);run(p.parse_args().phase)
+    p=argparse.ArgumentParser();p.add_argument('--phase',choices=['seed','verify'],required=True);phase=p.parse_args().phase
+    try:run(phase)
+    except Exception:
+        screenshot('v012-'+phase+'-failure')
+        (out/('v012-'+phase+'-failure-logcat.txt')).write_text(adb('logcat','-d','-v','brief'))
+        raise
