@@ -1,0 +1,132 @@
+name: PoliticsMemory stable installation fix
+on:
+  push:
+    branches: [fix/v0121-stable-install]
+    paths: [.github/workflows/v0121-install-fix.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: politics-stable-install-bootstrap
+  cancel-in-progress: false
+jobs:
+  deliver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Provision permanent release key once, never fall back after publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PM_KEY_B64: ${{ secrets.PM_STABLE_KEYSTORE_B64 }}
+          PM_KEY_PASSWORD: ${{ secrets.PM_STABLE_KEYSTORE_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import os,json,secrets,base64,subprocess,urllib.request,urllib.error,zipfile
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])/'pm-private-signing';root.mkdir(mode=0o700)
+          key=root/'politicsmemory-stable.p12'
+          supplied=os.environ.get('PM_KEY_B64','')
+          if supplied:
+              password=os.environ['PM_KEY_PASSWORD'];assert password,'Signing password missing'
+              key.write_bytes(base64.b64decode(supplied,validate=True))
+          else:
+              req=urllib.request.Request('https://api.github.com/repos/pq321/mcp_test/releases/tags/v0.12.1-stable-install',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+              try:
+                  urllib.request.urlopen(req,timeout=20).close()
+              except urllib.error.HTTPError as e:
+                  if e.code!=404:raise
+              else:raise RuntimeError('Stable identity already published: restore the original private key, never generate another')
+              assert not Path('docs/STABLE_SIGNING_CERT.pem').exists(),'Stable key already enrolled; restore it'
+              password=secrets.token_urlsafe(48)
+              env=dict(os.environ,PM_SIGNING_PASSWORD=password)
+              subprocess.run(['keytool','-genkeypair','-keystore',str(key),'-storetype','PKCS12','-storepass:env','PM_SIGNING_PASSWORD','-alias','politicsmemory-stable','-keyalg','RSA','-keysize','3072','-validity','10000','-dname','CN=PoliticsMemory Stable,OU=Personal study,O=Vector,C=CN','-noprompt'],env=env,check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+          print('::add-mask::'+password)
+          os.chmod(key,0o600)
+          with open(os.environ['GITHUB_ENV'],'a') as f:f.write('PM_SIGNING_KEYSTORE='+str(key)+'\nPM_SIGNING_PASSWORD='+password+'\n')
+          payload=root/'recovery.zip'
+          with zipfile.ZipFile(payload,'w',zipfile.ZIP_DEFLATED) as z:
+              z.write(key,'politicsmemory-stable.p12')
+              z.writestr('signing-private.json',json.dumps({'application_id':'org.vector.politicsmemory.stable','alias':'politicsmemory-stable','store_type':'PKCS12','password':password}))
+              z.writestr('README.txt','PRIVATE OWNER BACKUP. Never put this archive, the key, or its password into a public repository or build log. Set PM_SIGNING_KEYSTORE and PM_SIGNING_PASSWORD for future release builds. Keep applicationId unchanged; increment versionCode. No random-key fallback.\n')
+          Path('key-recovery').mkdir()
+          subprocess.run(['openssl','cms','-encrypt','-binary','-aes-256-cbc','-in',str(payload),'-outform','DER','-out','key-recovery/private-signing-backup.cms','build-support/signing-recovery-public.pem'],check=True)
+          payload.unlink()
+          subprocess.run(['keytool','-exportcert','-rfc','-keystore',str(key),'-storepass:env','PM_SIGNING_PASSWORD','-alias','politicsmemory-stable','-file','docs/STABLE_SIGNING_CERT.pem'],env=dict(os.environ,PM_SIGNING_PASSWORD=password),check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+          print('Release key provisioned; only public certificate and encrypted recovery are exported')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stable-signing-encrypted-recovery
+          path: key-recovery/private-signing-backup.cms
+          retention-days: 30
+      - name: Keep accepted study functions and distinguish launcher label only
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('app/src/main/AndroidManifest.xml');s=p.read_text();s=s.replace('android:label="政治背诵"','android:label="政治背诵·新版"');p.write_text(s)
+          p=Path('docs/INSTALL_FIX_V0121.md')
+          p.write_text('''# PoliticsMemory v0.12.1 安装修复\n\n新版应用标识为 org.vector.politicsmemory.stable，桌面名称为「政治背诵·新版」。可与旧版并存，不必卸载旧版，不修改旧版数据。它不是对旧包的原位覆盖。\n\n保留已验收v0.12的苏一目录、全局声音、三态背诵和重点标注；原文、录音、评分、手势、布局和手动同步不变。\n\n旧进度：先在旧版点同步，确认进度文件已经真正上传，再在新版选择同一progress.json和content-update.zip并手动同步；核对评分、错题与背诵位置后才考虑删除旧版。新旧应用不会自动共享私有数据库。真实手机和Google Drive服务器上传未由本次模拟器验收替代。\n\n签名使用独立的长期Release密钥，未放入源码或普通构建缓存。私钥恢复件只以公钥加密形式经过Actions，随后由所有者私有保管。公开docs/STABLE_SIGNING_CERT.pem仅为证书，不含私钥。\n\n后续Codex发布：使用同一applicationId和原私钥，递增versionCode。设置PM_SIGNING_KEYSTORE为私有p12路径，PM_SIGNING_PASSWORD为私有密码，执行gradle :app:assembleRelease。GitHub自动构建须由所有者设置PM_STABLE_KEYSTORE_B64和PM_STABLE_KEYSTORE_PASSWORD这两个Secrets；当前连接器未设置这些Secrets。缺密钥须停止发布，不能重新生成替代。\n''')
+          PY
+          git diff --exit-code 1172c20b073405801195ae34f1d13a1b062b592f -- app/src/main/java data preview web-preview/audio web-preview/audio-index.json
+          mkdir -p app/src/main/assets/audio deliverables evidence
+          cp data/suyi-full.json app/src/main/assets/suyi-full.json
+          cp web-preview/audio-index.json app/src/main/assets/audio-index.json
+          cp web-preview/audio/*.mp3 app/src/main/assets/audio/
+          gradle --no-daemon :app:assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk deliverables/PoliticsMemory-v0.12.1.apk
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --verbose --print-certs deliverables/PoliticsMemory-v0.12.1.apk > evidence/signature.txt
+          cat evidence/signature.txt
+      - name: Obtain old APK for non-destructive coexistence check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir old
+          gh release download v0.11.0-manual-drive --pattern PoliticsMemory-v0.11.0.apk --dir old
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install beside old app, launch, rate and reinstall without losing either app
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: python qa/stable_install_smoke.py
+      - name: Commit exact release identity and installation evidence
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          cp evidence/install-fix.json docs/INSTALL_FIX_V0121_ACCEPTANCE.json
+          git add app/src/main/AndroidManifest.xml docs/INSTALL_FIX_V0121.md docs/STABLE_SIGNING_CERT.pem docs/INSTALL_FIX_V0121_ACCEPTANCE.json
+          git diff --cached --quiet || git commit -m 'fix: verified stable release coexists with legacy app [skip ci]'
+          git push origin HEAD:fix/v0121-stable-install
+          cp docs/INSTALL_FIX_V0121_ACCEPTANCE.json docs/STABLE_SIGNING_CERT.pem deliverables/
+          (cd deliverables && sha256sum PoliticsMemory-v0.12.1.apk > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stable-install-apk-and-evidence
+          path: |
+            deliverables/
+            evidence/
+          retention-days: 30
+      - name: Publish installable stable release, preserve both previous releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create v0.12.1-stable-install deliverables/* --target "$(git rev-parse HEAD)" --title 'PoliticsMemory v0.12.1 - 安装修复与固定签名' --notes-file docs/INSTALL_FIX_V0121.md
+      - name: Remove temporary plaintext key after use
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/pm-private-signing"
