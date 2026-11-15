@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - .github/workflows/current-delivery.yml
+      - scripts/build_preview.py
+      - qa/current_entrypoints.py
 permissions:
   contents: write
   pages: write
@@ -33,6 +35,8 @@ jobs:
           python scripts/validate_study_resources.py
           python scripts/validate_audio.py data/suyi-full.json web-preview
           python scripts/build_preview.py --pack data/suyi-full.json --audio-index web-preview/audio-index.json --audio-dir web-preview/audio --out site
+          node --check preview/full-data.js
+          node --check preview/app.js
           cp site/index.html site/progress_server.py site/study_resource_bundle.py web-preview/
           python - <<'PY'
           import json,os,hashlib
@@ -42,7 +46,7 @@ jobs:
                   'main_integrated':True,'original_cards':561,'annotated_cards':len(resources['annotations']),
                   'cloze_spans':sum(bool(m.get('cloze')) for a in resources['annotations'].values() for m in a['marks']),
                   'production_voices':['default'],'android_apk_rebuilt':False,
-                  'sha256':{p:hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in ['preview/app.js','data/suyi-full.json','data/study-resources.json','site/index.html']},
+                  'sha256':{p:hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in ['preview/app.js','preview/full-data.js','data/suyi-full.json','data/study-resources.json','site/index.html']},
                   'limits':['Course ASR context is not a complete teacher-emphasis audit','Physical OPPO K5 and live Google Drive writeback not tested']}
           Path('site/build-info.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
           Path('site/README.txt').write_text('PoliticsMemory v0.12.1\n打开 index.html；Windows 手动同步运行 start-sync.cmd。保留 audio/。\n资料页：苏一（可折叠）→原五科。复习：回忆→完整→挖空→回忆。声音：倍速菜单4×下方展开后全局选择。\n覆盖旧网页前先备份原目录，并沿用原浏览器、原路径；不要清除浏览器数据。网页不会自动迁移不同网址的学习记录。\n只有主动点击同步才交换文件；Google Drive 的真实云端上传需在设备确认。\n',encoding='utf-8')
@@ -84,8 +88,8 @@ jobs:
           gh release upload v0.12.1-stable-install deliverables/* --clobber
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add web-preview/index.html web-preview/README.txt web-preview/progress_server.py web-preview/study_resource_bundle.py data/study-resources.json app/src/main/assets/study-resources.json preview/study-resources.js docs/CURRENT_DELIVERY.json
-          git diff --cached --quiet || git commit -m 'release: align default web and downloadable package with stable study controls [skip ci]'
+          git add preview/full-data.js web-preview/index.html web-preview/README.txt web-preview/progress_server.py web-preview/study_resource_bundle.py data/study-resources.json app/src/main/assets/study-resources.json preview/study-resources.js docs/CURRENT_DELIVERY.json
+          git diff --cached --quiet || git commit -m 'release: repair development data script and align all current study entrypoints [skip ci]'
           git push origin HEAD:main
       - name: Check whether the existing online Pages site is enabled
         id: pages
