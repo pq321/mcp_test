@@ -9,9 +9,39 @@
     "Confirm repeated sync preserves event IDs and ratings; opening, rating and reload do not auto-sync.",
     "Replace obsolete desktop pairing copy and rebuild packaged preview; recalculate all published asset checksums."
   ],
-  "browser_manual_sync_ci": "PENDING",
-  "windows_executable_health": "PENDING",
+  "browser_manual_sync_ci": "PASS",
+  "windows_executable_health": "PASS",
   "android": "Existing v0.11.0 APK retained; no Android source changes.",
   "real_google_drive_phone_sync": "NOT_VERIFIED: initial device document selection and provider upload still required.",
-  "personal_drive_files": "Not modified; no private file identifiers or study records included."
+  "personal_drive_files": "Not modified; no private file identifiers or study records included.",
+  "published_source_commit": "148f0d8024104609a60d478969c68e92f6fe33af",
+  "delivery_run_id": "43670550061",
+  "delivery_url": "https://github.com/pq321/mcp_test/actions/runs/43670550061",
+  "delivery_status": "SUCCESS",
+  "assets": [
+    {
+      "name": "PoliticsMemory-Sync.exe",
+      "size_bytes": 11690899,
+      "sha256": "428ed2a22c8325c5707be906c07455afb4011c40208c7c041c8f05ba618d9c8f",
+      "url": "https://github.com/pq321/mcp_test/releases/download/v0.11.0-manual-drive/PoliticsMemory-Sync.exe"
+    },
+    {
+      "name": "PoliticsMemory-v0.11.0-web.zip",
+      "size_bytes": 182233108,
+      "sha256": "d38415615b25fba74459ee425d35dae099fb0b32f6b1f25a937990f7cb35bd1c",
+      "url": "https://github.com/pq321/mcp_test/releases/download/v0.11.0-manual-drive/PoliticsMemory-v0.11.0-web.zip"
+    },
+    {
+      "name": "PoliticsMemory-v0.11.0.apk",
+      "size_bytes": 175267900,
+      "sha256": "ed0f087781ecf13e630ddbe80fbd57395f4bc5d64f60826cdd30bf57f933125b",
+      "url": "https://github.com/pq321/mcp_test/releases/download/v0.11.0-manual-drive/PoliticsMemory-v0.11.0.apk"
+    }
+  ],
+  "receiver_http_regression": {
+    "original_receipt_matches_uploaded_bytes": false,
+    "corrected_receipt_matches_uploaded_bytes": true,
+    "events_after_repeat": 1
+  },
+  "browser_regression": "Real visible controls: review, reveal, remember, sync, sync again; exactly two seeded/local events retained; no automatic sync on load, rating or reload."
 }
