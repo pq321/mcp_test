@@ -31,7 +31,21 @@ def main():
         old=result.get('annotations',{}).get(card['id'])
         assert old is None or old.get('revision',0)<revision or old==annotation,'Refuse to overwrite newer/different annotations at the same revision'
         result.setdefault('annotations',{})[card['id']]=annotation
-    encoded=(json.dumps(result,ensure_ascii=False,separators=(',',':'))+'\n').encode()
+    # Source-span-only presentation sidecar: never modify canonical card answers.
+sidecar=root/'data/study-presentations-r3.json'
+if sidecar.is_file():
+    presentation=json.loads(sidecar.read_text(encoding='utf-8'))
+    assert presentation['schema_version']==1
+    assert presentation['source_pack_sha256']==hashlib.sha256(raw).hexdigest()
+    assert set(presentation['annotations'])==set(result['annotations'])
+    for card_id,item in presentation['annotations'].items():
+        base=result['annotations'][card_id]
+        assert item['answer_sha256']==base['answer_sha256']
+        base['revision']=max(4,base['revision']+1)
+        base['full_layout']=item['full_layout']
+        base['brief_layout']=item['brief_layout']
+        base['presentation_status']='EXTRACTIVE_SOURCE_SPANS_FULL_UNALTERED_BRIEF_SUBSET'
+encoded=(json.dumps(result,ensure_ascii=False,separators=(',',':'))+'\n').encode()
     for name in ('data/study-resources.json','app/src/main/assets/study-resources.json'):
         p=ROOT/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(encoded)
     (ROOT/'preview/study-resources.js').write_text('window.POLITICS_STUDY_RESOURCES='+encoded.decode().strip().replace('</','<\\/')+';\n',encoding='utf-8')
