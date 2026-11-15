@@ -1,0 +1,133 @@
+name: PoliticsMemory v0.11 manual Drive and content update
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/v011-release.yml
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: politics-v011
+  cancel-in-progress: false
+jobs:
+  accepted:
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply exact checksum-verified patch
+        run: |
+          python - <<'PY'
+          import base64,gzip,hashlib,subprocess
+          from pathlib import Path
+          p=Path('source/v011-manual-drive.patch.gz.b64')
+          raw=gzip.decompress(base64.b64decode(p.read_text().strip(),validate=True))
+          expected='c82faab1541425dfe66dfc2ce976d15d1340329c8293c5b28b04b4f330c18169'
+          assert hashlib.sha256(raw).hexdigest()==expected,'source transfer checksum mismatch'
+          subprocess.run(['git','apply','--check','-'],input=raw,check=True)
+          subprocess.run(['git','apply','-'],input=raw,check=True)
+          PY
+          node --check preview/app.js
+          python -m py_compile desktop/progress_server.py scripts/publish_content_update.py qa/manual_drive_smoke.py qa/content_release_smoke.py
+          python scripts/validate_pack.py data/suyi-full.json
+          python qa/content_release_smoke.py
+      - name: Browser and local Drive-mirror integration tests
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+          python qa/manual_drive_smoke.py
+      - name: Bundle original 561 unchanged MP3 and rebuild complete desktop page
+        run: |
+          python scripts/validate_audio.py data/suyi-full.json web-preview
+          mkdir -p app/src/main/assets/audio
+          cp data/suyi-full.json app/src/main/assets/suyi-full.json
+          cp web-preview/audio-index.json app/src/main/assets/audio-index.json
+          cp web-preview/audio/*.mp3 app/src/main/assets/audio/
+          python scripts/build_preview.py --pack data/suyi-full.json --audio-index web-preview/audio-index.json --audio-dir web-preview/audio --out site
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          idx=json.loads(Path('web-preview/audio-index.json').read_text())
+          Path('preview/audio-index.js').write_text('window.POLITICS_AUDIO_INDEX='+json.dumps(idx,ensure_ascii=False,separators=(',',':'))+';\n',encoding='utf-8')
+          PY
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: politics-memory-debug-signing-v1
+      - name: Compile installable Android APK
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Start emulator and check core offline playback
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            adb shell wm size 1080x2340
+            adb shell wm density 440
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb shell am start -n org.vector.politicsmemory/.MainActivity
+            sleep 5
+            adb shell pidof org.vector.politicsmemory
+            adb exec-out screencap -p > android-v011.png
+            ! adb logcat -d -v brief | grep -A5 'FATAL EXCEPTION.*PoliticsMemory'
+      - name: Accept source and complete web preview
+        id: accepted
+        run: |
+          set -euo pipefail
+          cp site/index.html site/audio-index.json site/README.txt web-preview/
+          cp desktop/progress_server.py desktop/start-sync.cmd desktop/start-sync.sh web-preview/
+          cp docs/DRIVE_MANUAL_V011.md web-preview/README.md
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          p=Path('README.md')
+          p.write_text('# PoliticsMemory 0.11：手动同步与 Codex 知识包更新\n\n目前保留一个「同步」入口，严格只在点击时同步。首次选择两个 Google Drive 文档（进度 JSON + 内容 ZIP），更新包由 Codex 在 Drive 原位发布。电脑同步目录使用 Google Drive Desktop。当前不具备后台自动同步，Google Drive 真实端到端上传仍需在用户设备验证。详情：docs/DRIVE_MANUAL_V011.md。\n\n---\n\n'+p.read_text(),encoding='utf-8')
+          files=['app/build/outputs/apk/debug/app-debug.apk','web-preview/index.html','preview/app.js','desktop/progress_server.py','data/suyi-full.json']
+          report={'version':'0.11.0','run_id':os.environ['GITHUB_RUN_ID'],
+            'tests':{'manual_only_local_browser':'PASS','desktop_mirrored_file_receiver':'PASS','content_publisher_delete_and_hash':'PASS','android_build_and_start':'PASS'},
+            'limitations':['No real Google Drive DocumentsProvider present in emulator','SAF provider upload is asynchronous and lacks server-side receipt'],
+            'sha256':{name:hashlib.sha256(Path(name).read_bytes()).hexdigest() for name in files}}
+          Path('docs/V011_ACCEPTANCE.json').write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/build.gradle app/src/main/java preview/app.js preview/audio-index.js desktop scripts/publish_content_update.py qa/manual_drive_smoke.py qa/content_release_smoke.py docs/DRIVE_MANUAL_V011.md docs/V011_ACCEPTANCE.json web-preview/index.html web-preview/README.md web-preview/README.txt web-preview/progress_server.py web-preview/start-sync.cmd web-preview/start-sync.sh README.md
+          git rm source/v011-manual-drive.patch.gz.b64
+          git diff --cached --quiet || git commit -m 'release: v0.11 manual Drive sync and Codex content updates [skip ci]'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Publish Android and full desktop package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p deliverables
+          cp app/build/outputs/apk/debug/app-debug.apk deliverables/PoliticsMemory-v0.11.0.apk
+          (cd site && zip -q -r ../deliverables/PoliticsMemory-v0.11.0-web.zip .)
+          sha256sum deliverables/* > deliverables/SHA256SUMS.txt
+          gh release create v0.11.0-manual-drive deliverables/* --target "${{ steps.accepted.outputs.sha }}" --title 'PoliticsMemory v0.11 - 手动Drive同步' --notes-file docs/DRIVE_MANUAL_V011.md
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v011-build-summary
+          path: |
+            android-v011.png
+            docs/V011_ACCEPTANCE.json
+            app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
