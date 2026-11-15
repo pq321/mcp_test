@@ -1,0 +1,72 @@
+name: Flatten Shanbei two-voice package for phone sync
+on:
+  push:
+    branches: [audio/full-yunxi-yunyang-20261115]
+    paths: [.github/workflows/shanbei-two-flatten.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  phone_zip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - name: Collect completed exact 1122-voice package, no re-synthesis
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          READY=0
+          for attempt in $(seq 1 180); do
+            STATUS="$(gh api repos/pq321/mcp_test/actions/runs/43720935281 --jq .status)"
+            if [ "$STATUS" = completed ]; then
+              RESULT="$(gh api repos/pq321/mcp_test/actions/runs/43720935281 --jq .conclusion)"
+              if [ "$RESULT" != success ]; then
+                echo "Voice synthesis finished as $RESULT, not publishing partial audio" >&2
+                exit 1
+              fi
+              READY=1
+              break
+            fi
+            sleep 10
+          done
+          test "$READY" = 1
+          mkdir -p original
+          gh run download 43720935281 --repo pq321/mcp_test --name shanbei-yunyang-default-yunxi-full-package --dir original
+          ls -lh original/
+      - name: Verify structure and expand package into artifact ZIP root
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile,json,hashlib
+          src=Path('original/content-update.zip')
+          assert src.exists(),src
+          with zipfile.ZipFile(src) as z:
+              names=z.namelist()
+              assert len(names)==1124,len(names)
+              assert len([x for x in names if x.startswith('audio/default/2/') and x.endswith('.mp3')])==561
+              assert len([x for x in names if x.startswith('audio/yunxi/1/') and x.endswith('.mp3')])==561
+              assert 'update.json' in names and 'study-resources.json' in names
+              assert json.loads(z.read('update.json'))['resource_update'] is True
+              obj=json.loads(z.read('study-resources.json'))
+              assert len(obj['annotations'])==561
+              assert obj['voices']['default']['name']=='云扬（默认）'
+              assert obj['voices']['default']['revision']==2
+              assert obj['voices']['yunxi']['name']=='云希'
+              assert obj['voices']['yunxi']['revision']==1
+              assert len(obj['voices']['default']['items'])==561
+              assert len(obj['voices']['yunxi']['items'])==561
+              assert not any(x.startswith('packs/') for x in names)
+              z.extractall('phone-ready')
+          print('Phone-ready archive source verified:',hashlib.sha256(src.read_bytes()).hexdigest())
+          PY
+      - name: Publish flattened phone-ready artifact (root update.json, not nested ZIP)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Shanbei-content-update-two-voices-direct
+          path: phone-ready/
+          compression-level: 0
+          retention-days: 14
