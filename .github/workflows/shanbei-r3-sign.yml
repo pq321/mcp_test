@@ -1,0 +1,70 @@
+name: Shanbei R3 stable signing (existing key only)
+on:
+  push:
+    branches: [feature/shanbei-layout-brief-r3]
+    paths: [.github/workflows/shanbei-r3-sign.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Require same permanent release key; never generate a replacement
+        env:
+          PM_KEY_B64: ${{ secrets.PM_STABLE_KEYSTORE_B64 }}
+          PM_SIGNING_PASSWORD: ${{ secrets.PM_STABLE_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$PM_KEY_B64" || { echo "KEY_NOT_CONFIGURED: restore existing signing key into GitHub Actions Secrets"; exit 1; }
+          test -n "$PM_SIGNING_PASSWORD" || { echo "KEY_PASSWORD_NOT_CONFIGURED"; exit 1; }
+          SIGNING="$RUNNER_TEMP/shanbei-stable.p12"
+          umask 077
+          printf '%s' "$PM_KEY_B64" | base64 --decode > "$SIGNING"
+          chmod 600 "$SIGNING"
+          echo "PM_SIGNING_KEYSTORE=$SIGNING" >> "$GITHUB_ENV"
+          echo "::add-mask::$PM_SIGNING_PASSWORD"
+          echo "PM_SIGNING_PASSWORD=$PM_SIGNING_PASSWORD" >> "$GITHUB_ENV"
+          keytool -exportcert -rfc -storetype PKCS12 -keystore "$SIGNING" \
+            -storepass:env PM_SIGNING_PASSWORD -alias politicsmemory-stable \
+            -file "$RUNNER_TEMP/current-cert.pem" >/dev/null
+          openssl x509 -in "$RUNNER_TEMP/current-cert.pem" -outform DER > "$RUNNER_TEMP/current-cert.der"
+          openssl x509 -in docs/STABLE_SIGNING_CERT.pem -outform DER > "$RUNNER_TEMP/expected-cert.der"
+          cmp "$RUNNER_TEMP/current-cert.der" "$RUNNER_TEMP/expected-cert.der"
+          echo "PASS: original stable release certificate matches"
+      - name: Compile and sign same installed Android application id
+        run: |
+          set -euo pipefail
+          python scripts/expand_study_anchors.py
+          python scripts/validate_study_resources.py
+          python scripts/validate_audio.py data/suyi-full.json web-preview
+          mkdir -p app/src/main/assets/audio output
+          cp data/suyi-full.json app/src/main/assets/suyi-full.json
+          cp web-preview/audio-index.json app/src/main/assets/audio-index.json
+          cp web-preview/audio/*.mp3 app/src/main/assets/audio/
+          gradle --no-daemon :app:assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk output/Shanbei-v0.12.4.apk
+          TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$TOOLS/apksigner" verify --print-certs output/Shanbei-v0.12.4.apk > output/signature.txt
+          "$TOOLS/aapt" dump badging output/Shanbei-v0.12.4.apk | grep -E "package:|application-label:" > output/app-identity.txt
+          grep -q "package: name='org.vector.politicsmemory.stable' versionCode='13' versionName='0.12.4'" output/app-identity.txt
+          grep -q "application-label:'闪背'" output/app-identity.txt
+          sha256sum output/Shanbei-v0.12.4.apk > output/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: shanbei-v0124-signed-release
+          path: output/
+          retention-days: 30
+      - name: Delete temporary signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/shanbei-stable.p12" "$RUNNER_TEMP/current-cert.pem" "$RUNNER_TEMP/current-cert.der" "$RUNNER_TEMP/expected-cert.der"
