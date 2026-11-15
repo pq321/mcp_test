@@ -5,17 +5,209 @@ on:
     paths: [.github/workflows/v012-study-controls.yml]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
+  actions: read
+concurrency:
+  group: politics-v012-study-controls
+  cancel-in-progress: true
 jobs:
-  source_snapshot:
+  acceptance:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 35
+    outputs:
+      source_sha: ${{ steps.accept.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
-      - name: Export exact existing source and offline media
-        run: git archive --format=zip HEAD -o politics-source.zip
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Apply checksum verified scoped source patch
+        run: |
+          python - <<'PY'
+          import base64,lzma,hashlib,subprocess
+          from pathlib import Path
+          parts=sorted(Path('source').glob('v012-*.b64'))
+          if parts:
+              assert len(parts)==12
+              raw=lzma.decompress(base64.b64decode(''.join(p.read_text().strip() for p in parts),validate=True))
+              assert hashlib.sha256(raw).hexdigest()=='e2c63a14e3183a73ca08cca2bc2d1745cab38b0e8ab122398192e912ba1684f6'
+              subprocess.run(['git','apply','--check','-'],input=raw,check=True)
+              subprocess.run(['git','apply','-'],input=raw,check=True)
+          PY
+          python scripts/expand_study_anchors.py
+          node --check preview/app.js
+          python -m py_compile desktop/progress_server.py desktop/study_resource_bundle.py scripts/publish_study_resources.py qa/study_controls_android.py qa/study_controls_smoke.py
+          python scripts/validate_pack.py data/suyi-full.json
+          python scripts/validate_study_resources.py
+          python scripts/validate_audio.py data/suyi-full.json web-preview
+          python qa/content_release_smoke.py
+      - name: Real browser and receiver acceptance
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+          python scripts/build_preview.py --pack data/suyi-full.json --audio-index web-preview/audio-index.json --audio-dir web-preview/audio --out site
+          python qa/study_controls_smoke.py --site site
+          python qa/manual_drive_smoke.py
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: politics-memory-debug-signing-v1
+      - name: Compile APK and small installed-device acceptance runner
+        run: |
+          mkdir -p app/src/main/assets/audio
+          cp data/suyi-full.json app/src/main/assets/suyi-full.json
+          cp web-preview/audio-index.json app/src/main/assets/audio-index.json
+          cp web-preview/audio/*.mp3 app/src/main/assets/audio/
+          gradle --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Download original APK for real in-place upgrade
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p old
+          gh release download v0.11.0-manual-drive --pattern PoliticsMemory-v0.11.0.apk --dir old
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Installed Android upgrade, content, voices and playback
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            adb install old/PoliticsMemory-v0.11.0.apk
+            python qa/study_controls_android.py --phase seed
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell am instrument -w org.vector.politicsmemory.test/org.vector.politicsmemory.StudyControlsInstrumentation > evidence/v012-native.txt
+            cat evidence/v012-native.txt
+            grep 'PASS: upgrade keeps ratings' evidence/v012-native.txt
+            ! grep 'FAIL:' evidence/v012-native.txt
+            python qa/study_controls_android.py --phase verify
+            adb logcat -d -v brief > evidence/v012-logcat.txt
+      - name: Accept exact source and rebuild offline delivery
+        id: accept
+        run: |
+          set -euo pipefail
+          cp site/index.html site/audio-index.json site/README.txt site/progress_server.py site/study_resource_bundle.py site/start-sync.cmd site/start-sync.sh web-preview/
+          cp docs/STUDY_CONTROLS_V012.md web-preview/README.md
+          python - <<'PY'
+          import json,os,hashlib
+          from pathlib import Path
+          report={'version':'0.12.0','run_id':os.environ['GITHUB_RUN_ID'],'scope':['source header','global voice selector','hidden/full/cloze cycle','exact-source emphasis and cloze'],
+          'browser':json.loads(Path('evidence/v012-web.json').read_text()),'android':json.loads(Path('evidence/v012-android.json').read_text()),
+          'native_acceptance':Path('evidence/v012-native.txt').read_text(),
+          'unchanged_original_card_count':561,'new_production_voices':0,
+          'limits':['Physical OPPO K5 not tested','Real Google Drive provider upload not tested','Course context is related ASR context, not a claim of word-for-word teacher emphasis verification'],
+          'sha256':{str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in [Path('data/suyi-full.json'),Path('data/study-resources.json'),Path('app/build/outputs/apk/debug/app-debug.apk')]}}
+          Path('docs/V012_ACCEPTANCE.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/build.gradle app/src/main/java app/src/androidTest data/study-anchors-v012.json data/study-resources.json app/src/main/assets/study-resources.json desktop/progress_server.py desktop/study_resource_bundle.py docs/STUDY_CONTROLS_V012.md docs/V012_ACCEPTANCE.json preview/app.js preview/app.css preview/index.html preview/study-resources.js scripts/build_preview.py scripts/expand_study_anchors.py scripts/publish_study_resources.py scripts/validate_study_resources.py qa/study_controls_smoke.py qa/study_controls_android.py web-preview/index.html web-preview/audio-index.json web-preview/README.txt web-preview/README.md web-preview/progress_server.py web-preview/study_resource_bundle.py web-preview/start-sync.cmd web-preview/start-sync.sh
+          if compgen -G 'source/v012-*.b64' > /dev/null; then git rm source/v012-*.b64; fi
+          git diff --cached --quiet || git commit -m 'feat: scoped source, global voice and three-state study controls [skip ci]'
+          git push origin HEAD:feature/v012-study-controls
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v012-acceptance-and-apk
+          path: |
+            evidence/v012-*
+            docs/V012_ACCEPTANCE.json
+            app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+  windows:
+    needs: acceptance
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.acceptance.outputs.source_sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build standalone receiver
+        run: |
+          python -m pip install pyinstaller
+          python -m PyInstaller --clean --onefile --paths desktop --name PoliticsMemory-Sync desktop/progress_server.py
+      - name: Real Windows executable health check
+        timeout-minutes: 3
+        shell: python
+        run: |
+          import os,subprocess,tempfile,time,json,urllib.request
+          from pathlib import Path
+          with tempfile.TemporaryDirectory() as d:
+              root=Path(d);(root/'index.html').write_text('<h1>receiver check</h1>')
+              cloud=root/'cloud';cloud.mkdir();(cloud/'progress.json').write_text('{"kind":"politics-memory-progress","schema_version":1,"reviews":[],"events":[],"wrong_changes":{},"cursor":{}}')
+              proc=subprocess.Popen(['dist/PoliticsMemory-Sync.exe','--root',d,'--data-dir',str(root/'state'),'--drive-folder',str(cloud),'--port','18768','--no-browser'],stdout=subprocess.DEVNULL,stderr=subprocess.STDOUT,env=dict(os.environ,PYTHONIOENCODING='utf-8'))
+              try:
+                  for attempt in range(80):
+                      try:
+                          cfg=json.loads((root/'state/sync-config.json').read_text())
+                          req=urllib.request.Request('http://127.0.0.1:18768/api/health',headers={'Authorization':'Bearer '+cfg['token']})
+                          assert json.load(urllib.request.urlopen(req,timeout=2))['service']=='politics-memory-sync'
+                          print('PASS: Windows executable loads resource module and selected Drive folder',flush=True);break
+                      except (OSError,ValueError,KeyError):
+                          if proc.poll() is not None:raise RuntimeError('Windows receiver exited early')
+                          time.sleep(.25)
+                  else:raise RuntimeError('Windows receiver failed to start')
+              finally:
+                  subprocess.run(['taskkill','/PID',str(proc.pid),'/T','/F'],stdout=subprocess.DEVNULL,stderr=subprocess.STDOUT);proc.wait(timeout=10)
       - uses: actions/upload-artifact@v4
         with:
-          name: politics-v012-source
-          path: politics-source.zip
-          retention-days: 3
+          name: v012-windows-receiver
+          path: dist/PoliticsMemory-Sync.exe
+          retention-days: 14
+  publish:
+    needs: [acceptance,windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.acceptance.outputs.source_sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: v012-windows-receiver
+          path: windows
+      - uses: actions/download-artifact@v4
+        with:
+          name: v012-acceptance-and-apk
+          path: accepted
+      - name: Publish new version without replacing v0.11
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python scripts/build_preview.py --pack data/suyi-full.json --audio-index web-preview/audio-index.json --audio-dir web-preview/audio --out site
+          cp windows/PoliticsMemory-Sync.exe site/
+          cp docs/STUDY_CONTROLS_V012.md site/README.md
+          mkdir -p deliverables
+          cp accepted/app/build/outputs/apk/debug/app-debug.apk deliverables/PoliticsMemory-v0.12.0.apk
+          cp windows/PoliticsMemory-Sync.exe deliverables/
+          (cd site && zip -q -r ../deliverables/PoliticsMemory-v0.12.0-web.zip .)
+          (cd deliverables && sha256sum PoliticsMemory-v0.12.0.apk PoliticsMemory-Sync.exe PoliticsMemory-v0.12.0-web.zip > SHA256SUMS.txt)
+          python - <<'PY'
+          import json,os,subprocess,hashlib
+          from pathlib import Path
+          report=json.loads(Path('docs/V012_ACCEPTANCE.json').read_text());report['windows_executable']='PASS';report['source_sha']=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          report['published_assets']={p.name:{'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in Path('deliverables').iterdir()}
+          Path('deliverables/V012_ACCEPTANCE.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+          PY
+          gh release create v0.12.0-study-controls deliverables/* --target '${{ needs.acceptance.outputs.source_sha }}' --title 'PoliticsMemory v0.12 - 分类、全局声音与三态背诵' --notes-file docs/STUDY_CONTROLS_V012.md
