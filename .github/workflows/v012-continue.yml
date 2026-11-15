@@ -1,0 +1,16 @@
+name: Resume scoped v0.12 acceptance
+on:
+  push:
+    branches: [feature/v012-study-controls]
+    paths: [.github/workflows/v012-continue.yml, build.gradle, qa/v012_legacy_probe.py]
+permissions:
+  actions: write
+  contents: read
+jobs:
+  resume:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run v012-study-controls.yml --repo pq321/mcp_test --ref feature/v012-study-controls
