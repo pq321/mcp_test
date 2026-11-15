@@ -1,33 +1,16 @@
-name: Preserve scoped v0.12 implementation
+name: Resume scoped v0.12 acceptance
 on:
   push:
     branches: [feature/v012-study-controls]
     paths: [.github/workflows/v012-continue.yml]
-  workflow_dispatch:
 permissions:
-  contents: write
+  actions: write
+  contents: read
 jobs:
-  preserve_source:
+  resume:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 2
     steps:
-      - uses: actions/checkout@v4
-      - name: Reconstruct and preserve implementation without claiming device acceptance
-        run: |
-          python - <<'PY'
-          import base64,lzma,hashlib,subprocess
-          from pathlib import Path
-          parts=sorted(Path('source').glob('v012-*.b64'))
-          if parts:
-              raw=lzma.decompress(base64.b64decode(''.join(p.read_text().strip() for p in parts),validate=True))
-              assert hashlib.sha256(raw).hexdigest()=='e2c63a14e3183a73ca08cca2bc2d1745cab38b0e8ab122398192e912ba1684f6'
-              subprocess.run(['git','apply','--check','-'],input=raw,check=True)
-              subprocess.run(['git','apply','-'],input=raw,check=True)
-          subprocess.run(['python','scripts/expand_study_anchors.py'],check=True)
-          PY
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app/build.gradle app/src/main/java app/src/androidTest data/study-anchors-v012.json data/study-resources.json app/src/main/assets/study-resources.json desktop/progress_server.py desktop/study_resource_bundle.py docs/STUDY_CONTROLS_V012.md preview/app.js preview/app.css preview/index.html preview/study-resources.js scripts/build_preview.py scripts/expand_study_anchors.py scripts/publish_study_resources.py scripts/validate_study_resources.py qa/study_controls_smoke.py qa/study_controls_android.py
-          if compgen -G 'source/v012-*.b64' > /dev/null; then git rm source/v012-*.b64; fi
-          git diff --cached --quiet || git commit -m 'feat: preserve four approved study additions; Android acceptance pending [skip ci]'
-          git push origin HEAD:feature/v012-study-controls
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run v012-study-controls.yml --repo pq321/mcp_test --ref feature/v012-study-controls
