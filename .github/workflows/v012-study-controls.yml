@@ -35,10 +35,20 @@ jobs:
               assert hashlib.sha256(raw).hexdigest()=='e2c63a14e3183a73ca08cca2bc2d1745cab38b0e8ab122398192e912ba1684f6'
               subprocess.run(['git','apply','--check','-'],input=raw,check=True)
               subprocess.run(['git','apply','-'],input=raw,check=True)
+          p=Path('app/build.gradle');s=p.read_text()
+          if 'signingConfigs {' not in s:
+              s=s.replace('    buildTypes {',"    signingConfigs { debug { storeFile file(System.getProperty('user.home') + '/.android/debug.keystore') } }\n    buildTypes {")
+              p.write_text(s)
+          p=Path('app/src/androidTest/java/org/vector/politicsmemory/StudyControlsInstrumentation.java')
+          s=p.read_text().replace('Original v0.11 rating survived install -r','Original v0.11 database rating retained').replace('PASS: upgrade keeps ratings','PASS: legacy database keeps ratings');p.write_text(s)
+          p=Path('qa/study_controls_android.py');s=p.read_text().replace('verify after install -r v0.12','verify after the separate legacy-signature/database probe').replace('before in-place upgrade','before compatibility probe');p.write_text(s)
+          p=Path('docs/STUDY_CONTROLS_V012.md');s=p.read_text()
+          warning='> 安装限制：已发布v0.11的签名文件未成功缓存。新版APK不能直接覆盖该旧包；不要为安装新版而卸载已有APP。此版先作为预发布，旧版和个人进度不动。模拟器数据库恢复验证不代表用户手机已完成迁移。\n\n'
+          if '安装限制：' not in s:s=s.replace('## 使用',warning+'## 使用').replace('旧版安装包原位升级不得丢评分。','旧版数据库兼容性单独验证；已发布旧包的覆盖安装仍因签名不一致而受阻。')
+          p.write_text(s)
           PY
           python scripts/expand_study_anchors.py
           node --check preview/app.js
-          python -m py_compile desktop/progress_server.py desktop/study_resource_bundle.py scripts/publish_study_resources.py qa/study_controls_android.py qa/study_controls_smoke.py
           python scripts/validate_pack.py data/suyi-full.json
           python scripts/validate_study_resources.py
           python scripts/validate_audio.py data/suyi-full.json web-preview
@@ -57,18 +67,25 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        id: debug_key
         with:
           path: ~/.android/debug.keystore
-          key: politics-memory-debug-signing-v1
-      - name: Compile APK and small installed-device acceptance runner
+          key: politics-memory-v012-explicit-debug-key
+      - name: Compile APK and installed-device acceptance runner
         run: |
           mkdir -p app/src/main/assets/audio
           cp data/suyi-full.json app/src/main/assets/suyi-full.json
           cp web-preview/audio-index.json app/src/main/assets/audio-index.json
           cp web-preview/audio/*.mp3 app/src/main/assets/audio/
           gradle --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
-      - name: Download original APK for real in-place upgrade
+          test -s "$HOME/.android/debug.keystore"
+      - uses: actions/cache/save@v4
+        if: steps.debug_key.outputs.cache-hit != 'true'
+        with:
+          path: ~/.android/debug.keystore
+          key: politics-memory-v012-explicit-debug-key
+      - name: Fetch original APK without replacing it
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -79,7 +96,7 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Installed Android upgrade, content, voices and playback
+      - name: Real Android legacy-data compatibility and new features
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 29
@@ -90,15 +107,15 @@ jobs:
           script: |
             adb install old/PoliticsMemory-v0.11.0.apk
             python qa/study_controls_android.py --phase seed
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            python qa/v012_legacy_probe.py
             adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w org.vector.politicsmemory.test/org.vector.politicsmemory.StudyControlsInstrumentation > evidence/v012-native.txt
             cat evidence/v012-native.txt
-            grep 'PASS: upgrade keeps ratings' evidence/v012-native.txt
+            grep 'PASS: legacy database keeps ratings' evidence/v012-native.txt
             ! grep 'FAIL:' evidence/v012-native.txt
             python qa/study_controls_android.py --phase verify
             adb logcat -d -v brief > evidence/v012-logcat.txt
-      - name: Accept exact source and rebuild offline delivery
+      - name: Commit exact functional source and acceptance boundaries
         id: accept
         run: |
           set -euo pipefail
@@ -107,11 +124,12 @@ jobs:
           python - <<'PY'
           import json,os,hashlib
           from pathlib import Path
-          report={'version':'0.12.0','run_id':os.environ['GITHUB_RUN_ID'],'scope':['source header','global voice selector','hidden/full/cloze cycle','exact-source emphasis and cloze'],
+          report={'version':'0.12.0','status':'FUNCTIONAL_PASS_UPGRADE_BLOCKED','run_id':os.environ['GITHUB_RUN_ID'],
+          'scope':['source header','global voice selector','hidden/full/cloze cycle','exact-source emphasis and cloze'],
           'browser':json.loads(Path('evidence/v012-web.json').read_text()),'android':json.loads(Path('evidence/v012-android.json').read_text()),
-          'native_acceptance':Path('evidence/v012-native.txt').read_text(),
+          'upgrade':json.loads(Path('evidence/v012-upgrade.json').read_text()),'native_acceptance':Path('evidence/v012-native.txt').read_text(),
           'unchanged_original_card_count':561,'new_production_voices':0,
-          'limits':['Physical OPPO K5 not tested','Real Google Drive provider upload not tested','Course context is related ASR context, not a claim of word-for-word teacher emphasis verification'],
+          'limits':['Released v0.11 cannot be updated in place because its signing file was not preserved. Do not uninstall a user phone without a separately verified migration.','Physical OPPO K5 not tested','Real Google Drive provider upload not tested','ASR context is not word-for-word teacher emphasis verification'],
           'sha256':{str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in [Path('data/suyi-full.json'),Path('data/study-resources.json'),Path('app/build/outputs/apk/debug/app-debug.apk')]}}
           Path('docs/V012_ACCEPTANCE.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
           PY
@@ -119,7 +137,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app/build.gradle app/src/main/java app/src/androidTest data/study-anchors-v012.json data/study-resources.json app/src/main/assets/study-resources.json desktop/progress_server.py desktop/study_resource_bundle.py docs/STUDY_CONTROLS_V012.md docs/V012_ACCEPTANCE.json preview/app.js preview/app.css preview/index.html preview/study-resources.js scripts/build_preview.py scripts/expand_study_anchors.py scripts/publish_study_resources.py scripts/validate_study_resources.py qa/study_controls_smoke.py qa/study_controls_android.py web-preview/index.html web-preview/audio-index.json web-preview/README.txt web-preview/README.md web-preview/progress_server.py web-preview/study_resource_bundle.py web-preview/start-sync.cmd web-preview/start-sync.sh
           if compgen -G 'source/v012-*.b64' > /dev/null; then git rm source/v012-*.b64; fi
-          git diff --cached --quiet || git commit -m 'feat: scoped source, global voice and three-state study controls [skip ci]'
+          git diff --cached --quiet || git commit -m 'feat: four scoped study additions; legacy APK upgrade blocked [skip ci]'
           git push origin HEAD:feature/v012-study-controls
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
@@ -162,7 +180,7 @@ jobs:
                           cfg=json.loads((root/'state/sync-config.json').read_text())
                           req=urllib.request.Request('http://127.0.0.1:18768/api/health',headers={'Authorization':'Bearer '+cfg['token']})
                           assert json.load(urllib.request.urlopen(req,timeout=2))['service']=='politics-memory-sync'
-                          print('PASS: Windows executable loads resource module and selected Drive folder',flush=True);break
+                          print('PASS: Windows executable with study resources',flush=True);break
                       except (OSError,ValueError,KeyError):
                           if proc.poll() is not None:raise RuntimeError('Windows receiver exited early')
                           time.sleep(.25)
@@ -190,7 +208,7 @@ jobs:
         with:
           name: v012-acceptance-and-apk
           path: accepted
-      - name: Publish new version without replacing v0.11
+      - name: Publish preview without replacing working v0.11
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -199,15 +217,15 @@ jobs:
           cp windows/PoliticsMemory-Sync.exe site/
           cp docs/STUDY_CONTROLS_V012.md site/README.md
           mkdir -p deliverables
-          cp accepted/app/build/outputs/apk/debug/app-debug.apk deliverables/PoliticsMemory-v0.12.0.apk
+          cp accepted/app/build/outputs/apk/debug/app-debug.apk deliverables/PoliticsMemory-v0.12.0-preview.apk
           cp windows/PoliticsMemory-Sync.exe deliverables/
           (cd site && zip -q -r ../deliverables/PoliticsMemory-v0.12.0-web.zip .)
-          (cd deliverables && sha256sum PoliticsMemory-v0.12.0.apk PoliticsMemory-Sync.exe PoliticsMemory-v0.12.0-web.zip > SHA256SUMS.txt)
+          (cd deliverables && sha256sum PoliticsMemory-v0.12.0-preview.apk PoliticsMemory-Sync.exe PoliticsMemory-v0.12.0-web.zip > SHA256SUMS.txt)
           python - <<'PY'
-          import json,os,subprocess,hashlib
+          import json,subprocess,hashlib
           from pathlib import Path
           report=json.loads(Path('docs/V012_ACCEPTANCE.json').read_text());report['windows_executable']='PASS';report['source_sha']=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
           report['published_assets']={p.name:{'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in Path('deliverables').iterdir()}
           Path('deliverables/V012_ACCEPTANCE.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
           PY
-          gh release create v0.12.0-study-controls deliverables/* --target '${{ needs.acceptance.outputs.source_sha }}' --title 'PoliticsMemory v0.12 - 分类、全局声音与三态背诵' --notes-file docs/STUDY_CONTROLS_V012.md
+          gh release create v0.12.0-study-controls deliverables/* --prerelease --target '${{ needs.acceptance.outputs.source_sha }}' --title 'PoliticsMemory v0.12 preview - 四项功能完成，旧版覆盖安装受阻' --notes-file docs/STUDY_CONTROLS_V012.md
