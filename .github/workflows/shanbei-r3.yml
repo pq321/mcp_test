@@ -2,7 +2,9 @@ name: Shanbei R3 layout-and-brief delivery check
 on:
   push:
     branches: [feature/shanbei-layout-brief-r3]
-    paths: [.github/workflows/shanbei-r3.yml]
+    paths:
+      - .github/workflows/shanbei-r3.yml
+      - app/src/main/java/org/vector/politicsmemory/StudyResources.java
   workflow_dispatch:
 permissions:
   contents: read
@@ -29,6 +31,7 @@ jobs:
           sha256sum -c /tmp/r3-sha.txt
           python scripts/validate_study_resources.py
           python scripts/validate_audio.py data/suyi-full.json web-preview
+          grep -q 'singlePair?spans:spans.optJSONArray' app/src/main/java/org/vector/politicsmemory/StudyResources.java
           python - <<'PY'
           import json,hashlib
           from pathlib import Path
