@@ -99,8 +99,11 @@ final class StudyResources {
         SpannableStringBuilder out=new SpannableStringBuilder();
         if(spans==null)return out;
         JSONArray highlights=marks(card);
-        for(int i=0;i<spans.length();i++){
-            JSONArray p=spans.optJSONArray(i);if(p==null||p.length()<2)continue;
+        // Full tables store a single [start,end] pair; brief tables store [[start,end],...].
+        // Support both without changing any source content or the saved card schema.
+        boolean singlePair=spans.length()==2 && spans.opt(0) instanceof Number && spans.opt(1) instanceof Number;
+        for(int i=0;i<(singlePair?1:spans.length());i++){
+            JSONArray p=singlePair?spans:spans.optJSONArray(i);if(p==null||p.length()<2)continue;
             int start=p.optInt(0,-1),end=p.optInt(1,-1);
             if(start<0||end>card.answer.length()||end<=start)continue;
             while(start<end&&Character.isWhitespace(card.answer.charAt(start)))start++;
